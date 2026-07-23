@@ -13,18 +13,19 @@ The intended feeling is:
 
 ## Visual character
 
-The visual language may use:
+Settled direction: **Friendly Card** — chosen after benchmarking against Sublime Merge/Fork (dense, flat, expert-only), Linear/Raycast (flat, minimal, colder), and GitKraken/Tower (moderate radius, opaque cards, soft shadow). It sits closest to GitKraken/Tower because that balance of "polished but not scary" best matches the brand brief, and it ages better than a glass-heavy look since shadows don't rely on translucency.
 
-- medium-to-large rounded corners;
-- layered panels;
-- restrained translucency and background blur;
-- thin, low-contrast borders;
-- soft elevation;
+The visual language uses:
+
+- moderate rounded corners (14–18px on cards/panels, 8–10px on controls) — rounded enough to feel approachable, not so large it reads as a decorative concept app;
+- **opaque panels**, not translucent glass — depth comes from `--shadow-sm/md/lg`, not `backdrop-filter` blur;
+- layered surfaces distinguished by shadow and a subtle tone shift, not by transparency;
+- thin, low-contrast borders as a secondary depth cue alongside shadow;
 - generous spacing around primary actions;
 - compact spacing in file lists and diffs;
 - a crocodile mascot used selectively.
 
-Avoid excessive glassmorphism. Code, diffs, file lists, conflict editors, forms, and long-form content must sit on mostly opaque surfaces.
+Blur/translucency is not the default depth mechanism for GitOdrile chrome. Reserve it, if used at all, for genuinely transient overlays (a modal scrim) — never for a panel that sits on screen the whole session. Code, diffs, file lists, conflict editors, forms, and long-form content must sit on fully opaque surfaces.
 
 ## Layout concept
 
@@ -59,14 +60,12 @@ The app should work well between approximately 1024px and large desktop displays
 
 ## Design tokens
 
-Initial tokens are intentionally provisional.
-
 ```css
 :root {
   --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 22px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -120,21 +119,28 @@ The brand accent is a green (`--accent-primary`), but the same hex value cannot 
 
 | Token | Dark value | Light value |
 |---|---|---|
-| `--surface-app` | `#0c110e` | `#f4f7f5` |
-| `--surface-panel` | `rgba(24, 34, 28, 0.88)` | `rgba(255, 255, 255, 0.72)` |
-| `--surface-raised` | `#18221c` | `#ffffff` |
-| `--surface-code` | `#141d18` | `#eef2ef` |
-| `--text-primary` | `#edf4ef` | `#101815` |
-| `--text-secondary` | `#9bae9f` | `#55635a` |
-| `--border-subtle` | `rgba(223, 246, 231, 0.1)` | `rgba(16, 24, 20, 0.12)` |
-| `--accent-primary` | `#9de47b` | `#1f7a42` |
-| `--accent-primary-contrast` | `#102010` | `#f4fff2` |
-| `--status-success` | `#9de47b` | `#1f7a42` |
+| `--surface-app` | `#10160f` | `#f6f8f3` |
+| `--surface-panel` | `#17201a` | `#ffffff` |
+| `--surface-raised` | `#1c2620` | `#ffffff` |
+| `--surface-code` | `#151d17` | `#eef2ea` |
+| `--text-primary` | `#eef3ea` | `#16210f` |
+| `--text-secondary` | `#a3ad9d` | `#5c6b53` |
+| `--border-subtle` | `rgba(255, 255, 255, 0.08)` | `rgba(20, 30, 16, 0.1)` |
+| `--accent-primary` | `#6fce7d` | `#2f8f4c` |
+| `--accent-primary-contrast` | `#0d2110` | `#f2fff5` |
+| `--status-success` | `#6fce7d` | `#2f8f4c` |
 | `--status-warning` | `#e8b339` | `#8a5b00` |
 | `--status-danger` | `#ff6b5b` | `#b3261e` |
-| `--diff-added` | `#9de47b` | `#1f7a42` |
+| `--diff-added` | `#6fce7d` | `#2f8f4c` |
 | `--diff-removed` | `#ff6b5b` | `#b3261e` |
-| `--overlay` | `rgba(4, 8, 6, 0.68)` | `rgba(16, 24, 20, 0.4)` |
+| `--overlay` | `rgba(4, 8, 6, 0.68)` | `rgba(16, 22, 15, 0.4)` |
+| `--surface-hover` | `rgba(255, 255, 255, 0.06)` | `rgba(20, 30, 16, 0.05)` |
+| `--surface-active` | `rgba(111, 206, 125, 0.16)` | `rgba(47, 143, 76, 0.14)` |
+| `--shadow-sm` | `0 2px 8px rgba(0,0,0,0.22)` | `0 2px 8px rgba(20,30,16,0.08)` |
+| `--shadow-md` | `0 8px 20px rgba(0,0,0,0.3)` | `0 8px 20px rgba(20,30,16,0.1)` |
+| `--shadow-lg` | `0 24px 80px rgba(0,0,0,0.45)` | `0 24px 60px rgba(20,30,16,0.16)` |
+
+`--surface-active` is accent-tinted rather than neutral gray — this is what gives the active nav item and selected segmented-control option their "friendly card" warmth instead of a flat gray highlight.
 
 Every text/surface pairing above must hold at least a 4.5:1 contrast ratio (WCAG AA for body text); accent-on-surface pairings used only for large text, icons, or borders may use the AA large-text threshold (3:1) instead.
 
@@ -205,11 +211,9 @@ Rules:
 
 ## Transparency and native effects
 
-Cross-platform CSS translucency may be used in the top bar, sidebar, menus, command palette, and dialogs.
+CSS translucency (`backdrop-filter` blur) is not used for standing chrome — the sidebar, top bar, and cards are opaque; see "Visual character" above. It may still appear briefly behind a modal/command-palette scrim, since that's a transient overlay rather than a panel the user stares at all session.
 
-Native window effects such as Windows Mica/Acrylic and macOS vibrancy are optional enhancements. The app must look complete without them because behavior varies by OS, compositor, and webview.
-
-Linux should receive a deliberate solid-surface fallback.
+Native window effects such as Windows Mica/Acrylic and macOS vibrancy are optional enhancements and, if adopted later, are a visual bonus layered under still-opaque content — not a substitute for the shadow-based depth system. The app must look complete without them because behavior varies by OS, compositor, and webview. Linux should receive a deliberate solid-surface fallback.
 
 ## Accessibility
 
