@@ -141,39 +141,28 @@ const GIT_DOWNLOAD_URL: &str = "https://git-scm.com/downloads";
 
 #[derive(serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct InstallGitResult {
-    /// True once an installer has been launched (e.g. via the OS package
-    /// manager) and is running on its own; the app doesn't track completion.
+struct WingetActionResult {
+    /// True once winget has been launched (install or upgrade) and is
+    /// running on its own; the app doesn't track completion.
     started: bool,
-    /// Set when there's no in-app install path available, so the frontend
-    /// should open this URL in the user's browser instead.
+    /// Set when there's no in-app path available, so the frontend should
+    /// open this URL in the user's browser instead.
     fallback_url: Option<String>,
 }
 
-#[tauri::command]
-fn install_git() -> InstallGitResult {
+/// Spawns (never awaits) a winget subcommand. Deliberately not silenced with
+/// CREATE_NO_WINDOW: installing/updating software should stay visible
+/// (winget's progress, any UAC prompt), unlike the quick read-only git
+/// subcommands elsewhere in this file.
+fn spawn_winget(args: &[&str]) -> WingetActionResult {
     #[cfg(target_os = "windows")]
     {
-        // Deliberately not silenced with CREATE_NO_WINDOW: installing software
-        // should stay visible (winget's progress, any UAC prompt), unlike the
-        // quick read-only git subcommands elsewhere in this file.
-        let spawned = Command::new("winget")
-            .args([
-                "install",
-                "--id",
-                "Git.Git",
-                "-e",
-                "--accept-package-agreements",
-                "--accept-source-agreements",
-            ])
-            .spawn();
-
-        match spawned {
-            Ok(_) => InstallGitResult {
+        match Command::new("winget").args(args).spawn() {
+            Ok(_) => WingetActionResult {
                 started: true,
                 fallback_url: None,
             },
-            Err(_) => InstallGitResult {
+            Err(_) => WingetActionResult {
                 started: false,
                 fallback_url: Some(GIT_DOWNLOAD_URL.to_string()),
             },
@@ -181,9 +170,76 @@ fn install_git() -> InstallGitResult {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        InstallGitResult {
+        let _ = args;
+        WingetActionResult {
             started: false,
             fallback_url: Some(GIT_DOWNLOAD_URL.to_string()),
+        }
+    }
+}
+
+#[tauri::command]
+fn install_git() -> WingetActionResult {
+    spawn_winget(&[
+        "install",
+        "--id",
+        "Git.Git",
+        "-e",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+    ])
+}
+
+#[tauri::command]
+fn update_git() -> WingetActionResult {
+    spawn_winget(&[
+        "upgrade",
+        "--id",
+        "Git.Git",
+        "-e",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+    ])
+}
+
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct GitUpdateStatus {
+    /// False if the check itself couldn't run (e.g. no winget on this
+    /// machine/platform) — distinct from "checked and no update found".
+    checked: bool,
+    update_available: bool,
+}
+
+#[tauri::command]
+fn check_git_update() -> GitUpdateStatus {
+    #[cfg(target_os = "windows")]
+    {
+        let mut command = Command::new("winget");
+        command.args(["upgrade", "--accept-source-agreements"]);
+        command.creation_flags(CREATE_NO_WINDOW);
+
+        match command.output() {
+            // winget's `upgrade` (no --id) lists every package with a pending
+            // update. Checking whether "Git.Git" appears in that listing is a
+            // simple, version/locale-tolerant way to answer "is there an
+            // update for Git specifically" without parsing winget's table
+            // output column-by-column.
+            Ok(output) => GitUpdateStatus {
+                checked: true,
+                update_available: git_stdout(&output).contains("Git.Git"),
+            },
+            Err(_) => GitUpdateStatus {
+                checked: false,
+                update_available: false,
+            },
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        GitUpdateStatus {
+            checked: false,
+            update_available: false,
         }
     }
 }
@@ -197,7 +253,9 @@ pub fn run() {
             app_status,
             open_repository,
             git_diagnostics,
-            install_git
+            install_git,
+            update_git,
+            check_git_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitOdrile");

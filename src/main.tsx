@@ -16,7 +16,8 @@ type RepositoryInfo = {
   statusMessage: string;
 };
 type GitDiagnostics = { installed: boolean; version: string | null };
-type InstallGitResult = { started: boolean; fallbackUrl: string | null };
+type WingetActionResult = { started: boolean; fallbackUrl: string | null };
+type GitUpdateStatus = { checked: boolean; updateAvailable: boolean };
 
 const THEME_STORAGE_KEY = "gitodrile-theme";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "gitodrile-sidebar-collapsed";
@@ -285,28 +286,38 @@ function SettingsPanel({
   setTheme,
   onOpenAbout,
   gitDiagnostics,
+  gitUpdateStatus,
 }: {
   theme: ThemePreference;
   setTheme: (theme: ThemePreference) => void;
   onOpenAbout: () => void;
   gitDiagnostics: GitDiagnostics | null;
+  gitUpdateStatus: GitUpdateStatus | null;
 }): React.JSX.Element {
-  const [installGitMessage, setInstallGitMessage] = useState<string | null>(null);
+  const [gitActionMessage, setGitActionMessage] = useState<string | null>(null);
 
-  const handleInstallGit = async (): Promise<void> => {
-    setInstallGitMessage(null);
+  const runWingetAction = async (
+    command: "install_git" | "update_git",
+    launchedMessage: string,
+  ): Promise<void> => {
+    setGitActionMessage(null);
     try {
-      const result = await invoke<InstallGitResult>("install_git");
+      const result = await invoke<WingetActionResult>(command);
       if (result.fallbackUrl) {
         await openUrl(result.fallbackUrl);
-        setInstallGitMessage("Opened the official download page in your browser.");
+        setGitActionMessage("Opened the official download page in your browser.");
       } else {
-        setInstallGitMessage("Installer launched — once it finishes, reopen GitOdrile to detect Git.");
+        setGitActionMessage(launchedMessage);
       }
     } catch {
-      setInstallGitMessage("Couldn't start the installer.");
+      setGitActionMessage("Couldn't start that.");
     }
   };
+
+  const handleInstallGit = (): Promise<void> =>
+    runWingetAction("install_git", "Installer launched — once it finishes, reopen GitOdrile to detect Git.");
+  const handleUpdateGit = (): Promise<void> =>
+    runWingetAction("update_git", "Update launched — once it finishes, reopen GitOdrile to see the new version.");
 
   return (
     <div className="settings-view">
@@ -350,15 +361,25 @@ function SettingsPanel({
           <div>
             <strong>Git</strong>
             {gitDiagnostics === null && <p>Checking…</p>}
-            {gitDiagnostics?.installed && <p>{gitDiagnostics.version}</p>}
+            {gitDiagnostics?.installed && (
+              <p>
+                {gitDiagnostics.version}
+                {gitUpdateStatus?.updateAvailable && <span className="settings-row__badge">Update available</span>}
+              </p>
+            )}
             {gitDiagnostics && !gitDiagnostics.installed && (
               <p className="settings-row__warning">Not detected.</p>
             )}
-            {installGitMessage && <p className="settings-row__hint">{installGitMessage}</p>}
+            {gitActionMessage && <p className="settings-row__hint">{gitActionMessage}</p>}
           </div>
           {gitDiagnostics && !gitDiagnostics.installed && (
             <button className="secondary-button" type="button" onClick={() => void handleInstallGit()}>
               Install Git
+            </button>
+          )}
+          {gitDiagnostics?.installed && gitUpdateStatus?.updateAvailable && (
+            <button className="secondary-button" type="button" onClick={() => void handleUpdateGit()}>
+              Update
             </button>
           )}
         </div>
@@ -379,6 +400,7 @@ function App(): React.JSX.Element {
   const [openError, setOpenError] = useState<string | null>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [gitDiagnostics, setGitDiagnostics] = useState<GitDiagnostics | null>(null);
+  const [gitUpdateStatus, setGitUpdateStatus] = useState<GitUpdateStatus | null>(null);
   const aboutDialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -390,6 +412,15 @@ function App(): React.JSX.Element {
       .then(setGitDiagnostics)
       .catch(() => setGitDiagnostics({ installed: false, version: null }));
   }, []);
+
+  useEffect(() => {
+    if (!gitDiagnostics?.installed) {
+      return;
+    }
+    invoke<GitUpdateStatus>("check_git_update")
+      .then(setGitUpdateStatus)
+      .catch(() => setGitUpdateStatus({ checked: false, updateAvailable: false }));
+  }, [gitDiagnostics?.installed]);
 
   const handleOpenProject = async (): Promise<void> => {
     setOpenError(null);
@@ -604,6 +635,7 @@ function App(): React.JSX.Element {
               setTheme={setTheme}
               onOpenAbout={() => setIsAboutOpen(true)}
               gitDiagnostics={gitDiagnostics}
+              gitUpdateStatus={gitUpdateStatus}
             />
           )}
         </section>
