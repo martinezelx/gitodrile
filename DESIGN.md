@@ -108,7 +108,7 @@ Use shadows to signal stacking order, not to decorate: `--shadow-sm` for resting
 
 ### Icons
 
-Sidebar navigation and inline controls use small (16–18px) custom stroke icons drawn in the same restrained, geometric style as the rest of the UI (2px-ish stroke, rounded joins) — not a general-purpose icon font or a third-party icon set. An active nav item tints its icon with `--accent-primary`; the label stays `--text-primary`. Keep new icons consistent with this weight and level of detail so the sidebar doesn't mix visual styles.
+Sidebar navigation and inline controls use [Lucide](https://lucide.dev) icons (`lucide-react`, ISC) at 16–18px, imported by name so unused icons are tree-shaken out of the bundle. Chosen over hand-drawing our own because it ships real Git-specific glyphs (`GitCompare`, `GitCommitHorizontal`) instead of the generic pencil/clock metaphors the app used before — see the icon-library comparison done when this was decided. An active nav item tints its icon with `--accent-primary`; the label stays `--text-primary`. Don't mix in a second icon library or hand-drawn icons alongside it — pick the closest Lucide glyph even when it's not a perfect semantic match.
 
 Brand identity (mark + name) appears in exactly one visible place at a time, never two. The sidebar's brand block is the canonical one; the titlebar carries no branding of its own while the sidebar is visible, matching Arc/Notion/Linear-style custom titlebars — a second icon+name stacked a few pixels above the sidebar's reads as an accidental duplicate, not an intentional echo. The titlebar's brand block only reappears (icon and name together) once the sidebar is hidden below the 800px breakpoint, since it's then the sole remaining identity signal.
 
@@ -180,6 +180,8 @@ The mascot may appear in:
 - documentation and marketing.
 
 Do not place the mascot in every panel or use it to trivialize serious errors.
+
+**Placeholder mark:** until a custom mascot is designed, the app icon and every in-UI brand mark (sidebar, titlebar, About dialog) use a crocodile line-art glyph from [OpenMoji](https://openmoji.org) (CC BY-SA 4.0 — free for commercial use with attribution; source kept at `src-tauri/icons/source.svg`). It's a stand-in, not the final mascot: replace every instance of it together when the real one ships, don't let it linger in some spots after others move on.
 
 ## Typography
 

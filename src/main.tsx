@@ -4,6 +4,20 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  LayoutDashboard,
+  GitCompare,
+  GitCommitHorizontal,
+  LifeBuoy,
+  Settings2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Sun,
+  Moon,
+  Monitor,
+  FolderOpen,
+} from "lucide-react";
 import "./styles.css";
 
 type ThemePreference = "system" | "light" | "dark";
@@ -48,23 +62,9 @@ function useTheme(): [ThemePreference, (theme: ThemePreference) => void] {
 }
 
 const THEME_ICONS: Record<ThemePreference, React.JSX.Element> = {
-  system: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="13" rx="2" />
-      <path d="M8 21h8M12 17v4" />
-    </svg>
-  ),
-  light: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-    </svg>
-  ),
-  dark: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
-    </svg>
-  ),
+  system: <Monitor />,
+  light: <Sun />,
+  dark: <Moon />,
 };
 
 const THEME_LABELS: Record<ThemePreference, string> = {
@@ -76,49 +76,25 @@ const THEME_LABELS: Record<ThemePreference, string> = {
 const THEME_ORDER: ThemePreference[] = ["system", "light", "dark"];
 
 const NAV_ICONS = {
-  overview: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="8" height="8" rx="2" /><rect x="13" y="3" width="8" height="8" rx="2" />
-      <rect x="13" y="13" width="8" height="8" rx="2" /><rect x="3" y="13" width="8" height="8" rx="2" />
-    </svg>
-  ),
-  changes: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 20l1-4L15 6l3 3L8 19l-4 1Z" /><path d="M13 8l3 3" />
-    </svg>
-  ),
-  history: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" />
-    </svg>
-  ),
-  recovery: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 4v5h5" /><path d="M4.6 15a7.5 7.5 0 1 0 1.7-8.2L4 9" />
-    </svg>
-  ),
-  settings: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="4" y1="6" x2="20" y2="6" /><circle cx="9" cy="6" r="2" />
-      <line x1="4" y1="12" x2="20" y2="12" /><circle cx="15" cy="12" r="2" />
-      <line x1="4" y1="18" x2="20" y2="18" /><circle cx="9" cy="18" r="2" />
-    </svg>
-  ),
-  collapse: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="3" /><path d="M14 4v16" /><path d="M11 10l-2 2 2 2" />
-    </svg>
-  ),
-  expand: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="16" rx="3" /><path d="M14 4v16" /><path d="M12 10l2 2-2 2" />
-    </svg>
-  ),
+  overview: <LayoutDashboard />,
+  changes: <GitCompare />,
+  history: <GitCommitHorizontal />,
+  recovery: <LifeBuoy />,
+  settings: <Settings2 />,
+  collapse: <PanelLeftClose />,
+  expand: <PanelLeftOpen />,
 } as const;
 
-const SEARCH_ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="7" /><path d="m20 20-3.2-3.2" />
+const SEARCH_ICON = <Search />;
+
+// Temporary placeholder mark until a custom GitOdrile mascot exists.
+// Crocodile line art from OpenMoji (openmoji.org), CC BY-SA 4.0.
+const CROCODILE_MARK = (
+  <svg viewBox="0 0 72 72" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.6">
+    <line x1="29" x2="33" y1="52" y2="52" />
+    <path d="M46,52c0,0,17,2,19,0v-1c0,0,3-3,1-4s-5,0-5,0s-2.9167-1.3333-6.4583-4.6667C54.5417,42.3333,53,41,51,43c0,0-2-3-8-3s-24,1-24,1 s-6-1,0-3s11-2,12,0c0,0-2.6667-8.4167-17.3333-5.2083C13.6667,32.7917,1,36,8,48c0,0,2,4,8,4" />
+    <path d="M23,47c0,0-4.8121,4-3.406,5S23,55,23,55h4l-3.0324-3c0,0,2.0324-1,3.0324-3s0-3.2403,0-3.2403" />
+    <path d="M40,47c0,0-4.8121,4-3.406,5S40,55,40,55h4l-3.0324-3c0,0,2.0324-1,3.0324-3s0-3.2403,0-3.2403" />
   </svg>
 );
 
@@ -225,11 +201,7 @@ function CommandPalette({
   );
 }
 
-const FOLDER_ICON = (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h8a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z" />
-  </svg>
-);
+const FOLDER_ICON = <FolderOpen />;
 
 function OverviewPanel({
   project,
@@ -506,7 +478,7 @@ function App(): React.JSX.Element {
           onDoubleClick={() => performWindowAction(() => appWindow.toggleMaximize())}
         >
           <div className="window-titlebar__brand" data-tauri-drag-region>
-            <span className="window-titlebar__mark" aria-hidden="true">G</span>
+            <span className="window-titlebar__mark" aria-hidden="true">{CROCODILE_MARK}</span>
             <span className="window-titlebar__name" data-tauri-drag-region>GitOdrile</span>
           </div>
         </div>
@@ -563,7 +535,7 @@ function App(): React.JSX.Element {
       <main className={`app-shell${isSidebarCollapsed ? " app-shell--collapsed" : ""}`}>
         <aside className="sidebar">
           <div className="brand">
-            <div className="brand-mark" aria-hidden="true">G</div>
+            <div className="brand-mark" aria-hidden="true">{CROCODILE_MARK}</div>
             {!isSidebarCollapsed && (
               <div>
                 <strong>GitOdrile</strong>
@@ -660,7 +632,7 @@ function App(): React.JSX.Element {
             tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <div className="about-dialog__mark" aria-hidden="true">G</div>
+            <div className="about-dialog__mark" aria-hidden="true">{CROCODILE_MARK}</div>
             <p className="eyebrow">About GitOdrile</p>
             <h2 id="about-title">Git without the bite.</h2>
             <p>
