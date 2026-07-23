@@ -1,3 +1,5 @@
+#![allow(linker_messages)]
+
 #[tauri::command]
 fn app_status() -> &'static str {
     "GitOdrile is ready"
