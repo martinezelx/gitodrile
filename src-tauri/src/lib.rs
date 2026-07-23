@@ -137,14 +137,67 @@ fn git_diagnostics() -> GitDiagnostics {
     }
 }
 
+const GIT_DOWNLOAD_URL: &str = "https://git-scm.com/downloads";
+
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct InstallGitResult {
+    /// True once an installer has been launched (e.g. via the OS package
+    /// manager) and is running on its own; the app doesn't track completion.
+    started: bool,
+    /// Set when there's no in-app install path available, so the frontend
+    /// should open this URL in the user's browser instead.
+    fallback_url: Option<String>,
+}
+
+#[tauri::command]
+fn install_git() -> InstallGitResult {
+    #[cfg(target_os = "windows")]
+    {
+        // Deliberately not silenced with CREATE_NO_WINDOW: installing software
+        // should stay visible (winget's progress, any UAC prompt), unlike the
+        // quick read-only git subcommands elsewhere in this file.
+        let spawned = Command::new("winget")
+            .args([
+                "install",
+                "--id",
+                "Git.Git",
+                "-e",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+            ])
+            .spawn();
+
+        match spawned {
+            Ok(_) => InstallGitResult {
+                started: true,
+                fallback_url: None,
+            },
+            Err(_) => InstallGitResult {
+                started: false,
+                fallback_url: Some(GIT_DOWNLOAD_URL.to_string()),
+            },
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        InstallGitResult {
+            started: false,
+            fallback_url: Some(GIT_DOWNLOAD_URL.to_string()),
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             app_status,
             open_repository,
-            git_diagnostics
+            git_diagnostics,
+            install_git
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitOdrile");

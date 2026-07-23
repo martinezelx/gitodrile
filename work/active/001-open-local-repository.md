@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Open and validate a local repository
-status: done
+status: active
 priority: high
 type: feature
 areas:
@@ -9,7 +9,7 @@ areas:
   - frontend
   - platform
 created: 2026-07-23
-completed: 2026-07-23
+completed:
 ---
 
 # Goal
@@ -58,6 +58,7 @@ The implementation must establish patterns that later repository operations can 
 - [x] The primary result is explained in plain language, with exact Git details available secondarily.
 - [x] Simple Rust tests cover valid repo, non-repo folder, missing folder, and linked-worktree detection using temporary repositories.
 - [x] The required frontend and Rust checks pass.
+- [ ] The "project open" state (Overview once `open_repository` succeeds) has been visually verified in the real desktop app against a real repository, a real linked worktree, and a real non-repo folder — not just inferred from a browser-only fallback check.
 
 # Relevant files
 

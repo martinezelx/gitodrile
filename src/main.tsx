@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import "./styles.css";
 
 type ThemePreference = "system" | "light" | "dark";
@@ -15,6 +16,7 @@ type RepositoryInfo = {
   statusMessage: string;
 };
 type GitDiagnostics = { installed: boolean; version: string | null };
+type InstallGitResult = { started: boolean; fallbackUrl: string | null };
 
 const THEME_STORAGE_KEY = "gitodrile-theme";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "gitodrile-sidebar-collapsed";
@@ -289,6 +291,23 @@ function SettingsPanel({
   onOpenAbout: () => void;
   gitDiagnostics: GitDiagnostics | null;
 }): React.JSX.Element {
+  const [installGitMessage, setInstallGitMessage] = useState<string | null>(null);
+
+  const handleInstallGit = async (): Promise<void> => {
+    setInstallGitMessage(null);
+    try {
+      const result = await invoke<InstallGitResult>("install_git");
+      if (result.fallbackUrl) {
+        await openUrl(result.fallbackUrl);
+        setInstallGitMessage("Opened the official download page in your browser.");
+      } else {
+        setInstallGitMessage("Installer launched — once it finishes, reopen GitOdrile to detect Git.");
+      }
+    } catch {
+      setInstallGitMessage("Couldn't start the installer.");
+    }
+  };
+
   return (
     <div className="settings-view">
       <section className="settings-section">
@@ -333,11 +352,15 @@ function SettingsPanel({
             {gitDiagnostics === null && <p>Checking…</p>}
             {gitDiagnostics?.installed && <p>{gitDiagnostics.version}</p>}
             {gitDiagnostics && !gitDiagnostics.installed && (
-              <p className="settings-row__warning">
-                Not detected. Install Git and make sure it's on your PATH.
-              </p>
+              <p className="settings-row__warning">Not detected.</p>
             )}
+            {installGitMessage && <p className="settings-row__hint">{installGitMessage}</p>}
           </div>
+          {gitDiagnostics && !gitDiagnostics.installed && (
+            <button className="secondary-button" type="button" onClick={() => void handleInstallGit()}>
+              Install Git
+            </button>
+          )}
         </div>
       </section>
     </div>
