@@ -110,6 +110,8 @@ Use shadows to signal stacking order, not to decorate: `--shadow-sm` for resting
 
 Sidebar navigation and inline controls use small (16–18px) custom stroke icons drawn in the same restrained, geometric style as the rest of the UI (2px-ish stroke, rounded joins) — not a general-purpose icon font or a third-party icon set. An active nav item tints its icon with `--accent-primary`; the label stays `--text-primary`. Keep new icons consistent with this weight and level of detail so the sidebar doesn't mix visual styles.
 
+Brand identity (mark + name) appears in exactly one visible place at a time, never two. The sidebar's brand block is the canonical one; the titlebar carries no branding of its own while the sidebar is visible, matching Arc/Notion/Linear-style custom titlebars — a second icon+name stacked a few pixels above the sidebar's reads as an accidental duplicate, not an intentional echo. The titlebar's brand block only reappears (icon and name together) once the sidebar is hidden below the 800px breakpoint, since it's then the sole remaining identity signal.
+
 ### Honest affordances
 
 A control that does nothing yet must not look fully interactive. Navigation entries for screens that don't exist yet (e.g. Changes, History, Recovery before their flows are built) are rendered `disabled` with reduced opacity and a "Coming soon" tooltip, rather than looking clickable and silently failing. Replace the disabled state with a real view as soon as the screen exists — don't leave it disabled out of habit.

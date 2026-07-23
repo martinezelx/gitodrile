@@ -153,14 +153,17 @@ button { font: inherit; }
 
 .window-titlebar__drag { height: 100%; display: flex; align-items: center; min-width: 0; }
 .window-titlebar__drag--left { justify-content: flex-start; }
-.window-titlebar__brand { display: flex; align-items: center; gap: 8px; padding-left: 16px; color: var(--text-secondary); font-size: 13px; font-weight: 700; }
-.window-titlebar__mark { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--accent-primary); color: var(--accent-primary-contrast); font-size: 11px; font-weight: 900; }
-.window-titlebar__name {
-  /* The sidebar brand lockup already carries the full name + tagline; showing it
-     again here would just repeat the same icon+name a few pixels away. Only
-     surface it once the sidebar (and its brand block) is hidden below. */
+.window-titlebar__brand {
+  /* The sidebar brand lockup (icon + name + tagline) already carries the app's
+     identity a few pixels below. Showing the icon again here read as an
+     accidental double logo, not an intentional echo — so, like Arc/Notion/
+     Linear, the titlebar carries no branding at all while the sidebar is
+     visible. It only reappears once the sidebar (and its brand block) is
+     hidden below, as the sole remaining identity signal. */
   display: none;
+  align-items: center; gap: 8px; padding-left: 16px; color: var(--text-secondary); font-size: 13px; font-weight: 700;
 }
+.window-titlebar__mark { width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--radius-sm); background: var(--accent-primary); color: var(--accent-primary-contrast); font-size: 11px; font-weight: 900; }
 
 .window-titlebar__center { display: flex; justify-content: center; }
 .command-trigger {
@@ -357,8 +360,7 @@ button:focus-visible, .about-dialog:focus-visible, .palette-dialog:focus-visible
 }
 
 @media (max-width: 800px) {
-  .window-titlebar__brand { padding-left: 12px; }
-  .window-titlebar__name { display: inline; }
+  .window-titlebar__brand { display: flex; padding-left: 12px; }
   .command-trigger span, .command-trigger kbd { display: none; }
   .command-trigger { padding: 6px; }
   .window-control { width: 38px; }
