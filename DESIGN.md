@@ -97,8 +97,22 @@ Colors should be defined semantically rather than by component:
 - `--diff-added`
 - `--diff-removed`
 - `--overlay` (modal/backdrop scrim)
+- `--surface-hover` / `--surface-active` (neutral interactive-state tints, used for any hover/pressed/selected state instead of one-off `rgba(...)` values)
+- `--shadow-sm` / `--shadow-md` / `--shadow-lg` (elevation; theme-aware, see below)
 
 Do not hard-code product colors throughout components.
+
+### Elevation
+
+Use shadows to signal stacking order, not to decorate: `--shadow-sm` for resting cards and controls, `--shadow-md` for content the user is meant to focus on (hero card, a lifted hover state), `--shadow-lg` for anything floating above the whole UI (dialogs, popovers). In dark mode shadows read as depth against the near-black background; in light mode they carry more of the separation work since borders alone are subtler there — both are defined per theme so neither look goes flat.
+
+### Icons
+
+Sidebar navigation and inline controls use small (16–18px) custom stroke icons drawn in the same restrained, geometric style as the rest of the UI (2px-ish stroke, rounded joins) — not a general-purpose icon font or a third-party icon set. An active nav item tints its icon with `--accent-primary`; the label stays `--text-primary`. Keep new icons consistent with this weight and level of detail so the sidebar doesn't mix visual styles.
+
+### Honest affordances
+
+A control that does nothing yet must not look fully interactive. Navigation entries for screens that don't exist yet (e.g. Changes, History, Recovery before their flows are built) are rendered `disabled` with reduced opacity and a "Coming soon" tooltip, rather than looking clickable and silently failing. Replace the disabled state with a real view as soon as the screen exists — don't leave it disabled out of habit.
 
 ### Theming: light and dark
 

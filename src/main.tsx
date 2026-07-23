@@ -4,8 +4,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles.css";
 
 type ThemePreference = "system" | "light" | "dark";
+type View = "overview" | "settings";
 
 const THEME_STORAGE_KEY = "gitodrile-theme";
+const APP_VERSION = "0.1.0";
 
 function readStoredTheme(): ThemePreference {
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -18,6 +20,17 @@ function applyTheme(theme: ThemePreference): void {
   } else {
     document.documentElement.dataset.theme = theme;
   }
+}
+
+function useTheme(): [ThemePreference, (theme: ThemePreference) => void] {
+  const [theme, setTheme] = useState<ThemePreference>(() => readStoredTheme());
+
+  useEffect(() => {
+    applyTheme(theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  return [theme, setTheme];
 }
 
 const THEME_ICONS: Record<ThemePreference, React.JSX.Element> = {
@@ -41,21 +54,45 @@ const THEME_ICONS: Record<ThemePreference, React.JSX.Element> = {
 };
 
 const THEME_LABELS: Record<ThemePreference, string> = {
-  system: "Theme: matching system",
-  light: "Theme: light",
-  dark: "Theme: dark",
+  system: "System",
+  light: "Light",
+  dark: "Dark",
 };
 
 const THEME_ORDER: ThemePreference[] = ["system", "light", "dark"];
 
-function ThemeToggle(): React.JSX.Element {
-  const [theme, setTheme] = useState<ThemePreference>(() => readStoredTheme());
+const NAV_ICONS = {
+  overview: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="8" height="8" rx="2" /><rect x="13" y="3" width="8" height="8" rx="2" />
+      <rect x="13" y="13" width="8" height="8" rx="2" /><rect x="3" y="13" width="8" height="8" rx="2" />
+    </svg>
+  ),
+  changes: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20l1-4L15 6l3 3L8 19l-4 1Z" /><path d="M13 8l3 3" />
+    </svg>
+  ),
+  history: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" />
+    </svg>
+  ),
+  recovery: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4v5h5" /><path d="M4.6 15a7.5 7.5 0 1 0 1.7-8.2L4 9" />
+    </svg>
+  ),
+  settings: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="6" x2="20" y2="6" /><circle cx="9" cy="6" r="2" />
+      <line x1="4" y1="12" x2="20" y2="12" /><circle cx="15" cy="12" r="2" />
+      <line x1="4" y1="18" x2="20" y2="18" /><circle cx="9" cy="18" r="2" />
+    </svg>
+  ),
+} as const;
 
-  useEffect(() => {
-    applyTheme(theme);
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
-  }, [theme]);
-
+function ThemeToggle({ theme, setTheme }: { theme: ThemePreference; setTheme: (theme: ThemePreference) => void }): React.JSX.Element {
   const cycleTheme = (): void => {
     const nextIndex = (THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length;
     setTheme(THEME_ORDER[nextIndex]);
@@ -65,8 +102,8 @@ function ThemeToggle(): React.JSX.Element {
     <button
       className="icon-button"
       type="button"
-      aria-label={THEME_LABELS[theme]}
-      title={THEME_LABELS[theme]}
+      aria-label={`Theme: ${THEME_LABELS[theme]}. Click to change.`}
+      title={`Theme: ${THEME_LABELS[theme]}`}
       onClick={cycleTheme}
     >
       {THEME_ICONS[theme]}
@@ -74,8 +111,101 @@ function ThemeToggle(): React.JSX.Element {
   );
 }
 
+function OverviewPanel(): React.JSX.Element {
+  return (
+    <>
+      <section className="hero-card">
+        <div>
+          <p className="eyebrow">No project open</p>
+          <h2>Version control that speaks your language.</h2>
+          <p>
+            Open a Git project to review changes, save safe versions, publish work,
+            and recover from mistakes without memorising commands.
+          </p>
+        </div>
+        <div className="actions">
+          <button className="primary-button" type="button">Open a project</button>
+          <button className="secondary-button" type="button">Clone from GitHub</button>
+        </div>
+      </section>
+
+      <section className="principles" aria-label="Product principles">
+        <article>
+          <span>01</span>
+          <h3>Clear</h3>
+          <p>Actions describe outcomes instead of exposing jargon first.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h3>Safe</h3>
+          <p>Risky operations include previews and a recovery path.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h3>Fast</h3>
+          <p>A lightweight Tauri shell with Rust handling native work.</p>
+        </article>
+      </section>
+    </>
+  );
+}
+
+function SettingsPanel({
+  theme,
+  setTheme,
+  onOpenAbout,
+}: {
+  theme: ThemePreference;
+  setTheme: (theme: ThemePreference) => void;
+  onOpenAbout: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="settings-view">
+      <section className="settings-section">
+        <div className="settings-section__heading">
+          <h2>Appearance</h2>
+          <p>Choose how GitOdrile looks. "System" follows your OS setting automatically.</p>
+        </div>
+        <div className="segmented-control" role="radiogroup" aria-label="Theme">
+          {THEME_ORDER.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={theme === option}
+              className={`segmented-control__option${theme === option ? " segmented-control__option--active" : ""}`}
+              onClick={() => setTheme(option)}
+            >
+              <span aria-hidden="true">{THEME_ICONS[option]}</span>
+              {THEME_LABELS[option]}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section__heading">
+          <h2>General</h2>
+          <p>Application information and diagnostics.</p>
+        </div>
+        <div className="settings-row">
+          <div>
+            <strong>Version</strong>
+            <p>GitOdrile {APP_VERSION}</p>
+          </div>
+          <button className="secondary-button" type="button" onClick={onOpenAbout}>
+            View about
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function App(): React.JSX.Element {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [view, setView] = useState<View>("overview");
+  const [theme, setTheme] = useTheme();
   const aboutDialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -153,59 +283,61 @@ function App(): React.JSX.Element {
           </div>
 
           <nav aria-label="Project navigation">
-            <button className="nav-item nav-item--active" type="button">Overview</button>
-            <button className="nav-item" type="button">Changes</button>
-            <button className="nav-item" type="button">History</button>
-            <button className="nav-item" type="button">Recovery</button>
+            <button
+              className={`nav-item${view === "overview" ? " nav-item--active" : ""}`}
+              type="button"
+              aria-current={view === "overview" ? "page" : undefined}
+              onClick={() => setView("overview")}
+            >
+              <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.overview}</span>
+              Overview
+            </button>
+            <button className="nav-item" type="button" disabled title="Coming soon">
+              <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.changes}</span>
+              Changes
+            </button>
+            <button className="nav-item" type="button" disabled title="Coming soon">
+              <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.history}</span>
+              History
+            </button>
+            <button className="nav-item" type="button" disabled title="Coming soon">
+              <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.recovery}</span>
+              Recovery
+            </button>
+          </nav>
+
+          <nav aria-label="Application" className="nav--secondary">
+            <button
+              className={`nav-item${view === "settings" ? " nav-item--active" : ""}`}
+              type="button"
+              aria-current={view === "settings" ? "page" : undefined}
+              onClick={() => setView("settings")}
+            >
+              <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.settings}</span>
+              Settings
+            </button>
           </nav>
         </aside>
 
         <section className="workspace">
           <header className="topbar">
             <div>
-              <p className="eyebrow">Welcome to</p>
-              <h1>GitOdrile</h1>
+              <p className="eyebrow">{view === "overview" ? "Welcome to" : "Configure"}</p>
+              <h1>{view === "overview" ? "GitOdrile" : "Settings"}</h1>
             </div>
             <div className="topbar-actions">
-              <ThemeToggle />
+              <ThemeToggle theme={theme} setTheme={setTheme} />
               <button className="secondary-button" type="button" onClick={() => setIsAboutOpen(true)}>
                 About
               </button>
             </div>
           </header>
 
-          <section className="hero-card">
-            <div>
-              <p className="eyebrow">No project open</p>
-              <h2>Version control that speaks your language.</h2>
-              <p>
-                Open a Git project to review changes, save safe versions, publish work,
-                and recover from mistakes without memorising commands.
-              </p>
-            </div>
-            <div className="actions">
-              <button className="primary-button" type="button">Open a project</button>
-              <button className="secondary-button" type="button">Clone from GitHub</button>
-            </div>
-          </section>
-
-          <section className="principles" aria-label="Product principles">
-            <article>
-              <span>01</span>
-              <h3>Clear</h3>
-              <p>Actions describe outcomes instead of exposing jargon first.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <h3>Safe</h3>
-              <p>Risky operations include previews and a recovery path.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <h3>Fast</h3>
-              <p>A lightweight Tauri shell with Rust handling native work.</p>
-            </article>
-          </section>
+          {view === "overview" ? (
+            <OverviewPanel />
+          ) : (
+            <SettingsPanel theme={theme} setTheme={setTheme} onOpenAbout={() => setIsAboutOpen(true)} />
+          )}
         </section>
       </main>
 
@@ -228,7 +360,7 @@ function App(): React.JSX.Element {
               into clear, safe steps.
             </p>
             <dl className="about-details">
-              <div><dt>Version</dt><dd>0.1.0</dd></div>
+              <div><dt>Version</dt><dd>{APP_VERSION}</dd></div>
               <div><dt>Built with</dt><dd>Tauri, React, and Rust</dd></div>
             </dl>
             <button className="primary-button" type="button" onClick={() => setIsAboutOpen(false)}>
