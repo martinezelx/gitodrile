@@ -3,6 +3,7 @@
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -150,11 +151,26 @@ enum HeadState {
     Unborn,
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct GitDiagnostics {
-    installed: bool,
+    state: GitDiagnosticState,
     version: Option<String>,
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum GitDiagnosticState {
+    Available,
+    Missing,
+    Unusable,
+    CheckFailed,
+}
+
+enum ProcessAttempt {
+    Missing,
+    FailedToStart,
+    Completed { success: bool, stdout: String },
 }
 
 fn parse_git_version(raw_version_output: &str) -> String {
@@ -163,6 +179,30 @@ fn parse_git_version(raw_version_output: &str) -> String {
         .strip_prefix("git version ")
         .unwrap_or(raw_version_output.trim())
         .to_string()
+}
+
+fn git_diagnostics_from_attempt(attempt: ProcessAttempt) -> GitDiagnostics {
+    match attempt {
+        ProcessAttempt::Completed {
+            success: true,
+            stdout,
+        } => GitDiagnostics {
+            state: GitDiagnosticState::Available,
+            version: Some(parse_git_version(&stdout)),
+        },
+        ProcessAttempt::Missing => GitDiagnostics {
+            state: GitDiagnosticState::Missing,
+            version: None,
+        },
+        ProcessAttempt::Completed { success: false, .. } => GitDiagnostics {
+            state: GitDiagnosticState::Unusable,
+            version: None,
+        },
+        ProcessAttempt::FailedToStart => GitDiagnostics {
+            state: GitDiagnosticState::CheckFailed,
+            version: None,
+        },
+    }
 }
 
 #[tauri::command]
@@ -269,19 +309,137 @@ fn open_repository(path: String) -> Result<RepositoryInfo, AppError> {
 
 #[tauri::command]
 fn git_diagnostics() -> GitDiagnostics {
-    match base_git_command().arg("--version").output() {
-        Ok(output) if output.status.success() => GitDiagnostics {
-            installed: true,
-            version: Some(parse_git_version(&git_stdout(&output))),
+    let attempt = match base_git_command().arg("--version").output() {
+        Ok(output) => ProcessAttempt::Completed {
+            success: output.status.success(),
+            stdout: git_stdout(&output),
         },
-        _ => GitDiagnostics {
-            installed: false,
-            version: None,
+        Err(error) if error.kind() == ErrorKind::NotFound => ProcessAttempt::Missing,
+        Err(_) => ProcessAttempt::FailedToStart,
+    };
+    git_diagnostics_from_attempt(attempt)
+}
+
+const GIT_DOWNLOAD_URL: &str = "https://git-scm.com/downloads";
+const GIT_WINDOWS_DOWNLOAD_URL: &str = "https://git-scm.com/download/win";
+const GIT_MACOS_DOWNLOAD_URL: &str = "https://git-scm.com/download/mac";
+const GIT_LINUX_DOWNLOAD_URL: &str = "https://git-scm.com/download/linux";
+static INSTALL_STARTING: AtomicBool = AtomicBool::new(false);
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct GitInstallationResult {
+    outcome: GitInstallationOutcome,
+    platform: GitInstallationPlatform,
+    guidance_url: Option<String>,
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum GitInstallationOutcome {
+    Started,
+    Guidance,
+    AlreadyStarting,
+    Failed,
+}
+
+#[derive(serde::Serialize, Debug, Clone, Copy, PartialEq)]
+#[serde(rename_all = "snake_case")]
+// Every variant is used in a supported target build, but a single-platform
+// clippy run cannot see the constructors behind the other targets' cfgs.
+#[allow(dead_code)]
+enum GitInstallationPlatform {
+    Windows,
+    Macos,
+    Linux,
+    Unsupported,
+}
+
+#[derive(Clone, Copy)]
+enum InstallSpawnResult {
+    Started,
+    Missing,
+    Failed,
+}
+
+fn installation_result(
+    platform: GitInstallationPlatform,
+    spawn_result: Option<InstallSpawnResult>,
+) -> GitInstallationResult {
+    match platform {
+        GitInstallationPlatform::Windows => match spawn_result {
+            Some(InstallSpawnResult::Started) => GitInstallationResult {
+                outcome: GitInstallationOutcome::Started,
+                platform,
+                guidance_url: None,
+            },
+            Some(InstallSpawnResult::Missing) => GitInstallationResult {
+                outcome: GitInstallationOutcome::Guidance,
+                platform,
+                guidance_url: Some(GIT_WINDOWS_DOWNLOAD_URL.to_string()),
+            },
+            Some(InstallSpawnResult::Failed) | None => GitInstallationResult {
+                outcome: GitInstallationOutcome::Failed,
+                platform,
+                guidance_url: Some(GIT_WINDOWS_DOWNLOAD_URL.to_string()),
+            },
+        },
+        GitInstallationPlatform::Macos => GitInstallationResult {
+            outcome: GitInstallationOutcome::Guidance,
+            platform,
+            guidance_url: Some(GIT_MACOS_DOWNLOAD_URL.to_string()),
+        },
+        GitInstallationPlatform::Linux => GitInstallationResult {
+            outcome: GitInstallationOutcome::Guidance,
+            platform,
+            guidance_url: Some(GIT_LINUX_DOWNLOAD_URL.to_string()),
+        },
+        GitInstallationPlatform::Unsupported => GitInstallationResult {
+            outcome: GitInstallationOutcome::Failed,
+            platform,
+            guidance_url: None,
         },
     }
 }
 
-const GIT_DOWNLOAD_URL: &str = "https://git-scm.com/downloads";
+fn current_installation_platform() -> GitInstallationPlatform {
+    #[cfg(target_os = "windows")]
+    {
+        GitInstallationPlatform::Windows
+    }
+    #[cfg(target_os = "macos")]
+    {
+        GitInstallationPlatform::Macos
+    }
+    #[cfg(target_os = "linux")]
+    {
+        GitInstallationPlatform::Linux
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        GitInstallationPlatform::Unsupported
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_git_installer() -> InstallSpawnResult {
+    let mut command = Command::new("winget");
+    command
+        .args([
+            "install",
+            "--id",
+            "Git.Git",
+            "-e",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+        ])
+        .creation_flags(CREATE_NEW_CONSOLE);
+    match command.spawn() {
+        Ok(_) => InstallSpawnResult::Started,
+        Err(error) if error.kind() == ErrorKind::NotFound => InstallSpawnResult::Missing,
+        Err(_) => InstallSpawnResult::Failed,
+    }
+}
 
 #[derive(serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -329,15 +487,23 @@ fn spawn_winget(args: &[&str]) -> WingetActionResult {
 }
 
 #[tauri::command]
-fn install_git() -> WingetActionResult {
-    spawn_winget(&[
-        "install",
-        "--id",
-        "Git.Git",
-        "-e",
-        "--accept-package-agreements",
-        "--accept-source-agreements",
-    ])
+fn install_git() -> GitInstallationResult {
+    if INSTALL_STARTING.swap(true, Ordering::AcqRel) {
+        return GitInstallationResult {
+            outcome: GitInstallationOutcome::AlreadyStarting,
+            platform: current_installation_platform(),
+            guidance_url: None,
+        };
+    }
+
+    let platform = current_installation_platform();
+    #[cfg(target_os = "windows")]
+    let result = installation_result(platform, Some(spawn_git_installer()));
+    #[cfg(not(target_os = "windows"))]
+    let result = installation_result(platform, None);
+
+    INSTALL_STARTING.store(false, Ordering::Release);
+    result
 }
 
 #[tauri::command]
@@ -693,8 +859,79 @@ mod tests {
         // Assumes the machine running the tests has git on PATH, same as
         // every other test in this module (they all shell out to git).
         let diagnostics = git_diagnostics();
-        assert!(diagnostics.installed);
+        assert_eq!(diagnostics.state, GitDiagnosticState::Available);
         assert!(diagnostics.version.is_some());
+    }
+
+    #[test]
+    fn git_diagnostic_states_are_mapped_without_running_processes() {
+        assert_eq!(
+            git_diagnostics_from_attempt(ProcessAttempt::Missing).state,
+            GitDiagnosticState::Missing
+        );
+        assert_eq!(
+            git_diagnostics_from_attempt(ProcessAttempt::FailedToStart).state,
+            GitDiagnosticState::CheckFailed
+        );
+        assert_eq!(
+            git_diagnostics_from_attempt(ProcessAttempt::Completed {
+                success: false,
+                stdout: String::new(),
+            })
+            .state,
+            GitDiagnosticState::Unusable
+        );
+
+        let available = git_diagnostics_from_attempt(ProcessAttempt::Completed {
+            success: true,
+            stdout: "git version 2.43.0\n".to_string(),
+        });
+        assert_eq!(available.state, GitDiagnosticState::Available);
+        assert_eq!(available.version.as_deref(), Some("2.43.0"));
+    }
+
+    #[test]
+    fn installation_planning_is_platform_aware_and_hermetic() {
+        assert_eq!(
+            installation_result(
+                GitInstallationPlatform::Windows,
+                Some(InstallSpawnResult::Started)
+            )
+            .outcome,
+            GitInstallationOutcome::Started
+        );
+        let windows_without_winget = installation_result(
+            GitInstallationPlatform::Windows,
+            Some(InstallSpawnResult::Missing),
+        );
+        assert_eq!(
+            windows_without_winget.outcome,
+            GitInstallationOutcome::Guidance
+        );
+        assert_eq!(
+            windows_without_winget.guidance_url.as_deref(),
+            Some(GIT_WINDOWS_DOWNLOAD_URL)
+        );
+        assert_eq!(
+            installation_result(GitInstallationPlatform::Macos, None)
+                .guidance_url
+                .as_deref(),
+            Some(GIT_MACOS_DOWNLOAD_URL)
+        );
+        assert_eq!(
+            installation_result(GitInstallationPlatform::Linux, None)
+                .guidance_url
+                .as_deref(),
+            Some(GIT_LINUX_DOWNLOAD_URL)
+        );
+        assert_eq!(
+            installation_result(
+                GitInstallationPlatform::Windows,
+                Some(InstallSpawnResult::Failed)
+            )
+            .outcome,
+            GitInstallationOutcome::Failed
+        );
     }
 
     #[test]

@@ -380,6 +380,7 @@ h1 { margin-bottom: 0; font-size: 22px; letter-spacing: -0.01em; }
 .settings-row p { color: var(--text-secondary); font-size: 14px; margin-bottom: 0; }
 .settings-row__warning { color: var(--status-danger); }
 .settings-row__hint { font-size: 12px; margin-top: 2px; }
+.settings-row__actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .settings-row__badge {
   margin-left: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; padding: 2px 8px; border-radius: 999px;
   background: var(--surface-active); color: var(--accent-primary);
@@ -415,4 +416,6 @@ button:focus-visible, .about-dialog:focus-visible, .palette-dialog:focus-visible
   .empty-state__actions { flex-direction: column; width: 100%; }
   .segmented-control { flex-direction: column; }
   .identity-fields { grid-template-columns: 1fr; }
+  .settings-row { align-items: flex-start; flex-direction: column; }
+  .settings-row__actions { width: 100%; }
 }

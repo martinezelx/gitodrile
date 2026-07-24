@@ -98,10 +98,19 @@ export interface Translations {
   settingsGeneralGitLabel: string;
   settingsGeneralChecking: string;
   settingsGeneralUpdateAvailable: string;
-  settingsGeneralNotDetected: string;
+  settingsGeneralGitMissing: string;
+  settingsGeneralGitUnusable: string;
+  settingsGeneralGitCheckFailed: string;
+  settingsGeneralCheckAgain: string;
   settingsGeneralInstallGit: string;
   settingsGeneralUpdate: string;
+  gitStartingInstaller: string;
   gitInstallerLaunched: string;
+  gitInstallerAlreadyStarting: string;
+  gitInstallerFailedWithGuidance: string;
+  gitWindowsGuidanceOpened: string;
+  gitMacosGuidanceOpened: string;
+  gitLinuxGuidanceOpened: string;
   gitUpdateLaunched: string;
   gitOpenedDownloadPage: string;
   gitCouldntStart: string;
@@ -218,10 +227,20 @@ const en: Translations = {
   settingsGeneralGitLabel: "Git",
   settingsGeneralChecking: "Checking…",
   settingsGeneralUpdateAvailable: "Update available",
-  settingsGeneralNotDetected: "Not detected.",
+  settingsGeneralGitMissing: "Git isn't installed or isn't available to GitOdrile.",
+  settingsGeneralGitUnusable: "Git was found, but it isn't working correctly.",
+  settingsGeneralGitCheckFailed: "GitOdrile couldn't check the Git installation.",
+  settingsGeneralCheckAgain: "Check again",
   settingsGeneralInstallGit: "Install Git",
   settingsGeneralUpdate: "Update",
+  gitStartingInstaller: "Starting…",
   gitInstallerLaunched: "Installer launched — this can take a moment to appear. Reopen GitOdrile once it finishes.",
+  gitInstallerAlreadyStarting: "The installer is already starting.",
+  gitInstallerFailedWithGuidance: "The installer couldn't start. The official Windows instructions were opened instead.",
+  gitWindowsGuidanceOpened: "winget isn't available, so the official Windows installation instructions were opened.",
+  gitMacosGuidanceOpened: "The official macOS installation options were opened. Choose the method that fits your Mac.",
+  gitLinuxGuidanceOpened:
+    "The official Linux instructions were opened. Use the package manager for your distribution.",
   gitUpdateLaunched: "Update launched — this can take a moment to appear. Reopen GitOdrile once it finishes.",
   gitOpenedDownloadPage: "Opened the official download page in your browser.",
   gitCouldntStart: "Couldn't start that.",
@@ -342,11 +361,24 @@ const es: Translations = {
   settingsGeneralGitLabel: "Git",
   settingsGeneralChecking: "Comprobando…",
   settingsGeneralUpdateAvailable: "Actualización disponible",
-  settingsGeneralNotDetected: "No detectado.",
+  settingsGeneralGitMissing: "Git no está instalado o no está disponible para GitOdrile.",
+  settingsGeneralGitUnusable: "Git se encontró, pero no funciona correctamente.",
+  settingsGeneralGitCheckFailed: "GitOdrile no pudo comprobar la instalación de Git.",
+  settingsGeneralCheckAgain: "Comprobar de nuevo",
   settingsGeneralInstallGit: "Instalar Git",
   settingsGeneralUpdate: "Actualizar",
+  gitStartingInstaller: "Iniciando…",
   gitInstallerLaunched:
     "Instalador iniciado — puede tardar un momento en aparecer. Vuelve a abrir GitOdrile cuando termine.",
+  gitInstallerAlreadyStarting: "El instalador ya se está iniciando.",
+  gitInstallerFailedWithGuidance:
+    "El instalador no pudo iniciarse. Se abrieron en su lugar las instrucciones oficiales para Windows.",
+  gitWindowsGuidanceOpened:
+    "winget no está disponible, así que se abrieron las instrucciones oficiales de instalación para Windows.",
+  gitMacosGuidanceOpened:
+    "Se abrieron las opciones oficiales de instalación para macOS. Elige el método apropiado para tu Mac.",
+  gitLinuxGuidanceOpened:
+    "Se abrieron las instrucciones oficiales para Linux. Usa el gestor de paquetes de tu distribución.",
   gitUpdateLaunched:
     "Actualización iniciada — puede tardar un momento en aparecer. Vuelve a abrir GitOdrile cuando termine.",
   gitOpenedDownloadPage: "Se abrió la página oficial de descarga en tu navegador.",
