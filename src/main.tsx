@@ -32,10 +32,19 @@ type RepositoryInfo = {
 type GitDiagnostics = { installed: boolean; version: string | null };
 type WingetActionResult = { started: boolean; fallbackUrl: string | null };
 type GitUpdateStatus = { checked: boolean; updateAvailable: boolean };
+type GitIdentity = { name: string | null; email: string | null };
 
 const THEME_STORAGE_KEY = "gitodrile-theme";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "gitodrile-sidebar-collapsed";
+const LAST_PROJECT_PATH_STORAGE_KEY = "gitodrile-last-project-path";
+const REOPEN_LAST_PROJECT_STORAGE_KEY = "gitodrile-reopen-last-project";
+const CONFIRM_CLOSE_PROJECT_STORAGE_KEY = "gitodrile-confirm-close-project";
 const APP_VERSION = "0.1.0";
+
+function readStoredBoolean(key: string, defaultValue: boolean): boolean {
+  const stored = localStorage.getItem(key);
+  return stored === null ? defaultValue : stored === "true";
+}
 
 function readStoredTheme(): ThemePreference {
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -259,14 +268,48 @@ function SettingsPanel({
   onOpenAbout,
   gitDiagnostics,
   gitUpdateStatus,
+  reopenLastProject,
+  setReopenLastProject,
+  confirmCloseProject,
+  setConfirmCloseProject,
 }: {
   theme: ThemePreference;
   setTheme: (theme: ThemePreference) => void;
   onOpenAbout: () => void;
   gitDiagnostics: GitDiagnostics | null;
   gitUpdateStatus: GitUpdateStatus | null;
+  reopenLastProject: boolean;
+  setReopenLastProject: (value: boolean) => void;
+  confirmCloseProject: boolean;
+  setConfirmCloseProject: (value: boolean) => void;
 }): React.JSX.Element {
   const [gitActionMessage, setGitActionMessage] = useState<string | null>(null);
+  const [nameInput, setNameInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [identityMessage, setIdentityMessage] = useState<string | null>(null);
+  const [isSavingIdentity, setIsSavingIdentity] = useState(false);
+
+  useEffect(() => {
+    invoke<GitIdentity>("get_git_identity")
+      .then((result) => {
+        setNameInput(result.name ?? "");
+        setEmailInput(result.email ?? "");
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const handleSaveIdentity = async (): Promise<void> => {
+    setIdentityMessage(null);
+    setIsSavingIdentity(true);
+    try {
+      await invoke("set_git_identity", { name: nameInput, email: emailInput });
+      setIdentityMessage("Saved.");
+    } catch (error) {
+      setIdentityMessage(typeof error === "string" ? error : "Couldn't save that.");
+    } finally {
+      setIsSavingIdentity(false);
+    }
+  };
 
   const runWingetAction = async (
     command: "install_git" | "update_git",
@@ -362,7 +405,104 @@ function SettingsPanel({
           )}
         </div>
       </section>
+
+      <section className="settings-section">
+        <div className="settings-section__heading">
+          <h2>Git identity</h2>
+          <p>Used to sign the versions you save. This is a normal, global Git setting — not stored only inside GitOdrile.</p>
+        </div>
+        <div className="identity-fields">
+          <label className="text-field">
+            <span>Name</span>
+            <input
+              type="text"
+              value={nameInput}
+              onChange={(event) => setNameInput(event.target.value)}
+              placeholder="Ada Lovelace"
+            />
+          </label>
+          <label className="text-field">
+            <span>Email</span>
+            <input
+              type="email"
+              value={emailInput}
+              onChange={(event) => setEmailInput(event.target.value)}
+              placeholder="ada@example.com"
+            />
+          </label>
+        </div>
+        <div className="settings-section__footer">
+          {identityMessage && <p className="settings-row__hint">{identityMessage}</p>}
+          <button
+            className="primary-button"
+            type="button"
+            disabled={isSavingIdentity}
+            onClick={() => void handleSaveIdentity()}
+          >
+            {isSavingIdentity ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section__heading">
+          <h2>Startup</h2>
+          <p>Control what happens when GitOdrile launches.</p>
+        </div>
+        <div className="settings-row">
+          <div>
+            <strong>Reopen last project on launch</strong>
+            <p>Skip picking a folder again if you had one open last time.</p>
+          </div>
+          <ToggleSwitch
+            label="Reopen last project on launch"
+            checked={reopenLastProject}
+            onChange={setReopenLastProject}
+          />
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section__heading">
+          <h2>Safety</h2>
+          <p>Extra confirmations before you can lose your place.</p>
+        </div>
+        <div className="settings-row">
+          <div>
+            <strong>Confirm before closing a project</strong>
+            <p>Ask before clearing the open project, in case that was a misclick.</p>
+          </div>
+          <ToggleSwitch
+            label="Confirm before closing a project"
+            checked={confirmCloseProject}
+            onChange={setConfirmCloseProject}
+          />
+        </div>
+      </section>
     </div>
+  );
+}
+
+function ToggleSwitch({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`toggle-switch${checked ? " toggle-switch--on" : ""}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="toggle-switch__knob" />
+    </button>
   );
 }
 
@@ -379,11 +519,27 @@ function App(): React.JSX.Element {
   const [isOpening, setIsOpening] = useState(false);
   const [gitDiagnostics, setGitDiagnostics] = useState<GitDiagnostics | null>(null);
   const [gitUpdateStatus, setGitUpdateStatus] = useState<GitUpdateStatus | null>(null);
+  const [reopenLastProject, setReopenLastProject] = useState(() =>
+    readStoredBoolean(REOPEN_LAST_PROJECT_STORAGE_KEY, false),
+  );
+  const [confirmCloseProject, setConfirmCloseProject] = useState(() =>
+    readStoredBoolean(CONFIRM_CLOSE_PROJECT_STORAGE_KEY, true),
+  );
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const aboutDialogRef = useRef<HTMLDivElement>(null);
+  const closeConfirmDialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(REOPEN_LAST_PROJECT_STORAGE_KEY, String(reopenLastProject));
+  }, [reopenLastProject]);
+
+  useEffect(() => {
+    localStorage.setItem(CONFIRM_CLOSE_PROJECT_STORAGE_KEY, String(confirmCloseProject));
+  }, [confirmCloseProject]);
 
   useEffect(() => {
     invoke<GitDiagnostics>("git_diagnostics")
@@ -410,10 +566,40 @@ function App(): React.JSX.Element {
       setIsOpening(true);
       const info = await invoke<RepositoryInfo>("open_repository", { path: selected });
       setProject(info);
+      localStorage.setItem(LAST_PROJECT_PATH_STORAGE_KEY, info.path);
     } catch (error) {
       setOpenError(typeof error === "string" ? error : "Couldn't open that folder.");
     } finally {
       setIsOpening(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!reopenLastProject) {
+      return;
+    }
+    const lastPath = localStorage.getItem(LAST_PROJECT_PATH_STORAGE_KEY);
+    if (!lastPath) {
+      return;
+    }
+    invoke<RepositoryInfo>("open_repository", { path: lastPath })
+      .then(setProject)
+      .catch(() => localStorage.removeItem(LAST_PROJECT_PATH_STORAGE_KEY));
+    // Only ever run once, on launch — reopenLastProject changing later
+    // shouldn't retrigger an auto-open mid-session.
+  }, []);
+
+  const closeProject = (): void => {
+    setProject(null);
+    localStorage.removeItem(LAST_PROJECT_PATH_STORAGE_KEY);
+    setIsCloseConfirmOpen(false);
+  };
+
+  const requestCloseProject = (): void => {
+    if (confirmCloseProject) {
+      setIsCloseConfirmOpen(true);
+    } else {
+      closeProject();
     }
   };
 
@@ -434,6 +620,22 @@ function App(): React.JSX.Element {
   }, [isAboutOpen]);
 
   useEffect(() => {
+    if (!isCloseConfirmOpen) {
+      return undefined;
+    }
+
+    closeConfirmDialogRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setIsCloseConfirmOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCloseConfirmOpen]);
+
+  useEffect(() => {
     const handleShortcut = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -449,7 +651,7 @@ function App(): React.JSX.Element {
     { id: "go-overview", label: "Go to Overview", action: () => setView("overview") },
     { id: "go-settings", label: "Go to Settings", action: () => setView("settings") },
     ...(project
-      ? [{ id: "close-project", label: "Close project", action: () => setProject(null) }]
+      ? [{ id: "close-project", label: "Close project", action: requestCloseProject }]
       : [{ id: "open-project", label: "Open a project", action: () => void handleOpenProject() }]),
     { id: "theme-system", label: "Use system theme", action: () => setTheme("system") },
     { id: "theme-light", label: "Use light theme", action: () => setTheme("light") },
@@ -534,14 +736,25 @@ function App(): React.JSX.Element {
 
       <main className={`app-shell${isSidebarCollapsed ? " app-shell--collapsed" : ""}`}>
         <aside className="sidebar">
-          <div className="brand">
-            <div className="brand-mark" aria-hidden="true">{CROCODILE_MARK}</div>
-            {!isSidebarCollapsed && (
-              <div>
-                <strong>GitOdrile</strong>
-                <span>Git without the bite</span>
-              </div>
-            )}
+          <div className="sidebar-header">
+            <div className="brand">
+              <div className="brand-mark" aria-hidden="true">{CROCODILE_MARK}</div>
+              {!isSidebarCollapsed && (
+                <div>
+                  <strong>GitOdrile</strong>
+                  <span>Git without the bite</span>
+                </div>
+              )}
+            </div>
+            <button
+              className="sidebar-toggle"
+              type="button"
+              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+            >
+              <span aria-hidden="true">{isSidebarCollapsed ? NAV_ICONS.expand : NAV_ICONS.collapse}</span>
+            </button>
           </div>
 
           <nav aria-label="Project navigation">
@@ -580,17 +793,6 @@ function App(): React.JSX.Element {
               <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.settings}</span>
               <span className="nav-item__label">Settings</span>
             </button>
-            <button
-              className="nav-item"
-              type="button"
-              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
-            >
-              <span className="nav-item__icon" aria-hidden="true">
-                {isSidebarCollapsed ? NAV_ICONS.expand : NAV_ICONS.collapse}
-              </span>
-              <span className="nav-item__label">Collapse</span>
-            </button>
           </nav>
         </aside>
 
@@ -605,7 +807,7 @@ function App(): React.JSX.Element {
               openError={openError}
               isOpening={isOpening}
               onOpenProject={() => void handleOpenProject()}
-              onCloseProject={() => setProject(null)}
+              onCloseProject={requestCloseProject}
             />
           ) : (
             <SettingsPanel
@@ -614,6 +816,10 @@ function App(): React.JSX.Element {
               onOpenAbout={() => setIsAboutOpen(true)}
               gitDiagnostics={gitDiagnostics}
               gitUpdateStatus={gitUpdateStatus}
+              reopenLastProject={reopenLastProject}
+              setReopenLastProject={setReopenLastProject}
+              confirmCloseProject={confirmCloseProject}
+              setConfirmCloseProject={setConfirmCloseProject}
             />
           )}
         </section>
@@ -646,6 +852,34 @@ function App(): React.JSX.Element {
             <button className="primary-button" type="button" onClick={() => setIsAboutOpen(false)}>
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {isCloseConfirmOpen && (
+        <div className="about-backdrop" role="presentation" onMouseDown={() => setIsCloseConfirmOpen(false)}>
+          <div
+            ref={closeConfirmDialogRef}
+            className="about-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="close-confirm-title"
+            tabIndex={-1}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 id="close-confirm-title">Close this project?</h2>
+            <p>
+              {project ? `"${project.name}" ` : "The project "}
+              stays exactly as it is on disk. You can reopen it anytime.
+            </p>
+            <div className="dialog-actions">
+              <button className="secondary-button" type="button" onClick={() => setIsCloseConfirmOpen(false)}>
+                Cancel
+              </button>
+              <button className="primary-button" type="button" onClick={closeProject}>
+                Close project
+              </button>
+            </div>
           </div>
         </div>
       )}

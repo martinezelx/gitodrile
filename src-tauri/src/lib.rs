@@ -252,6 +252,85 @@ fn check_git_update() -> GitUpdateStatus {
     }
 }
 
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct GitIdentity {
+    name: Option<String>,
+    email: Option<String>,
+}
+
+// `config_override`, when set, points git at an alternate global config file
+// via `GIT_CONFIG_GLOBAL` (a real git env var, supported since Git 2.32).
+// Production calls always pass `None` (the user's real global config); tests
+// pass a temporary file so they never touch the machine's real Git identity.
+fn read_global_git_config(key: &str, config_override: Option<&str>) -> Option<String> {
+    let mut command = base_git_command();
+    if let Some(path) = config_override {
+        command.env("GIT_CONFIG_GLOBAL", path);
+    }
+    let output = command
+        .args(["config", "--global", "--get", key])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = git_stdout(&output);
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn write_global_git_config(
+    key: &str,
+    value: &str,
+    config_override: Option<&str>,
+) -> Result<(), String> {
+    let mut command = base_git_command();
+    if let Some(path) = config_override {
+        command.env("GIT_CONFIG_GLOBAL", path);
+    }
+    let status = command
+        .args(["config", "--global", key, value])
+        .status()
+        .map_err(|_| "Couldn't run git.".to_string())?;
+    if !status.success() {
+        return Err(format!("Couldn't save {key}."));
+    }
+    Ok(())
+}
+
+fn set_git_identity_with_override(
+    name: &str,
+    email: &str,
+    config_override: Option<&str>,
+) -> Result<(), String> {
+    let name = name.trim();
+    let email = email.trim();
+    if name.is_empty() || email.is_empty() {
+        return Err("Enter both a name and an email.".to_string());
+    }
+
+    write_global_git_config("user.name", name, config_override)?;
+    write_global_git_config("user.email", email, config_override)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_git_identity() -> GitIdentity {
+    GitIdentity {
+        name: read_global_git_config("user.name", None),
+        email: read_global_git_config("user.email", None),
+    }
+}
+
+#[tauri::command]
+fn set_git_identity(name: String, email: String) -> Result<(), String> {
+    set_git_identity_with_override(&name, &email, None)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -263,7 +342,9 @@ pub fn run() {
             git_diagnostics,
             install_git,
             update_git,
-            check_git_update
+            check_git_update,
+            get_git_identity,
+            set_git_identity
         ])
         .run(tauri::generate_context!())
         .expect("error while running GitOdrile");
@@ -396,5 +477,39 @@ mod tests {
             "2.43.0.windows.1"
         );
         assert_eq!(parse_git_version("2.43.0"), "2.43.0");
+    }
+
+    #[test]
+    fn git_identity_round_trips_through_a_temporary_global_config() {
+        let mut config_path = std::env::temp_dir();
+        config_path.push(format!("gitodrile-test-gitconfig-{}", std::process::id()));
+        let _ = fs::remove_file(&config_path);
+        let config_override = config_path.to_string_lossy().to_string();
+
+        assert_eq!(
+            read_global_git_config("user.name", Some(&config_override)),
+            None
+        );
+
+        set_git_identity_with_override("Ada Lovelace", "ada@example.com", Some(&config_override))
+            .expect("set identity should succeed");
+
+        assert_eq!(
+            read_global_git_config("user.name", Some(&config_override)),
+            Some("Ada Lovelace".to_string())
+        );
+        assert_eq!(
+            read_global_git_config("user.email", Some(&config_override)),
+            Some("ada@example.com".to_string())
+        );
+
+        let _ = fs::remove_file(&config_path);
+    }
+
+    #[test]
+    fn set_git_identity_rejects_empty_fields() {
+        let error = set_git_identity_with_override(" ", "ada@example.com", None)
+            .expect_err("empty name should be rejected");
+        assert_eq!(error, "Enter both a name and an email.");
     }
 }
