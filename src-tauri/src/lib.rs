@@ -13,6 +13,9 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
 
 fn base_git_command() -> Command {
+    // `mut` is only exercised on Windows (creation_flags below); harmless
+    // elsewhere, but clippy flags it as unused on non-Windows targets.
+    #[allow(unused_mut)]
     let mut command = Command::new("git");
     #[cfg(target_os = "windows")]
     command.creation_flags(CREATE_NO_WINDOW);
