@@ -59,6 +59,12 @@ export interface Translations {
   commandUseDarkTheme: string;
 
   overviewWorktreeBadge: string;
+  overviewRepositoryBranch: (branch: string) => string;
+  overviewWorktreeBranch: (branch: string) => string;
+  overviewRepositoryDetached: string;
+  overviewWorktreeDetached: string;
+  overviewRepositoryUnborn: (branch: string) => string;
+  overviewWorktreeUnborn: (branch: string) => string;
   overviewCloseProject: string;
   overviewEmptyTitle: string;
   overviewEmptyDescription: string;
@@ -68,6 +74,15 @@ export interface Translations {
   overviewCloneFromGithub: string;
   overviewOpenDialogTitle: string;
   overviewCouldntOpenFolder: string;
+  errorPathMissing: string;
+  errorPathUnusable: string;
+  errorNotRepository: string;
+  errorBareRepository: string;
+  errorGitMissing: string;
+  errorGitUnusable: string;
+  errorGitCommandFailed: string;
+  errorInvalidIdentity: string;
+  errorGitConfigWriteFailed: string;
 
   settingsAppearanceTitle: string;
   settingsAppearanceDescription: string;
@@ -163,6 +178,12 @@ const en: Translations = {
   commandUseDarkTheme: "Use dark theme",
 
   overviewWorktreeBadge: "Worktree",
+  overviewRepositoryBranch: (branch) => `Git project on version line “${branch}”.`,
+  overviewWorktreeBranch: (branch) => `Separate workspace on version line “${branch}”.`,
+  overviewRepositoryDetached: "Git project opened at a specific saved version.",
+  overviewWorktreeDetached: "Separate workspace opened at a specific saved version.",
+  overviewRepositoryUnborn: (branch) => `New Git project on version line “${branch}”, with no saved versions yet.`,
+  overviewWorktreeUnborn: (branch) => `New separate workspace on version line “${branch}”, with no saved versions yet.`,
   overviewCloseProject: "Close project",
   overviewEmptyTitle: "No project open",
   overviewEmptyDescription:
@@ -173,6 +194,15 @@ const en: Translations = {
   overviewCloneFromGithub: "Clone from GitHub",
   overviewOpenDialogTitle: "Open a Git project",
   overviewCouldntOpenFolder: "Couldn't open that folder.",
+  errorPathMissing: "That folder no longer exists. Choose another folder.",
+  errorPathUnusable: "That folder can't be read. Check its permissions or choose another folder.",
+  errorNotRepository: "That folder isn't inside a Git project. Choose a project folder and try again.",
+  errorBareRepository: "That Git repository has no working files, so GitOdrile can't open it yet.",
+  errorGitMissing: "Git wasn't found. Install Git, reopen GitOdrile, and try again.",
+  errorGitUnusable: "Git is installed but couldn't be started. Check the installation and try again.",
+  errorGitCommandFailed: "Git couldn't inspect this project. Check that its files are readable.",
+  errorInvalidIdentity: "Enter both a name and an email.",
+  errorGitConfigWriteFailed: "Git couldn't save that identity. Check your global Git configuration.",
 
   settingsAppearanceTitle: "Appearance",
   settingsAppearanceDescription: 'Choose how GitOdrile looks. "System" follows your OS setting automatically.',
@@ -198,7 +228,7 @@ const en: Translations = {
 
   settingsIdentityTitle: "Git identity",
   settingsIdentityDescription:
-    "Used to sign the versions you save. This is a normal, global Git setting — not stored only inside GitOdrile.",
+    "Used to record you as the author of versions you save. This is a normal, global Git setting — not stored only inside GitOdrile.",
   identityNameLabel: "Name",
   identityEmailLabel: "Email",
   identityNamePlaceholder: "Ada Lovelace",
@@ -269,6 +299,14 @@ const es: Translations = {
   commandUseDarkTheme: "Usar el tema oscuro",
 
   overviewWorktreeBadge: "Árbol de trabajo",
+  overviewRepositoryBranch: (branch) => `Proyecto de Git en la línea de versión «${branch}».`,
+  overviewWorktreeBranch: (branch) => `Espacio de trabajo separado en la línea de versión «${branch}».`,
+  overviewRepositoryDetached: "Proyecto de Git abierto en una versión guardada concreta.",
+  overviewWorktreeDetached: "Espacio de trabajo separado abierto en una versión guardada concreta.",
+  overviewRepositoryUnborn: (branch) =>
+    `Proyecto de Git nuevo en la línea de versión «${branch}», todavía sin versiones guardadas.`,
+  overviewWorktreeUnborn: (branch) =>
+    `Espacio de trabajo separado nuevo en la línea de versión «${branch}», todavía sin versiones guardadas.`,
   overviewCloseProject: "Cerrar proyecto",
   overviewEmptyTitle: "No hay ningún proyecto abierto",
   overviewEmptyDescription:
@@ -279,6 +317,15 @@ const es: Translations = {
   overviewCloneFromGithub: "Clonar desde GitHub",
   overviewOpenDialogTitle: "Abrir un proyecto de Git",
   overviewCouldntOpenFolder: "No se pudo abrir esa carpeta.",
+  errorPathMissing: "Esa carpeta ya no existe. Elige otra carpeta.",
+  errorPathUnusable: "No se puede leer esa carpeta. Comprueba sus permisos o elige otra.",
+  errorNotRepository: "Esa carpeta no está dentro de un proyecto de Git. Elige una carpeta del proyecto.",
+  errorBareRepository: "Ese repositorio no contiene archivos de trabajo, así que GitOdrile aún no puede abrirlo.",
+  errorGitMissing: "No se encontró Git. Instálalo, vuelve a abrir GitOdrile e inténtalo de nuevo.",
+  errorGitUnusable: "Git está instalado, pero no se pudo iniciar. Comprueba la instalación.",
+  errorGitCommandFailed: "Git no pudo inspeccionar este proyecto. Comprueba que sus archivos se puedan leer.",
+  errorInvalidIdentity: "Introduce un nombre y un correo electrónico.",
+  errorGitConfigWriteFailed: "Git no pudo guardar la identidad. Comprueba tu configuración global de Git.",
 
   settingsAppearanceTitle: "Apariencia",
   settingsAppearanceDescription:
@@ -307,7 +354,7 @@ const es: Translations = {
 
   settingsIdentityTitle: "Identidad de Git",
   settingsIdentityDescription:
-    "Se usa para firmar las versiones que guardas. Es un ajuste normal y global de Git, no algo exclusivo de GitOdrile.",
+    "Se usa para indicar que eres el autor de las versiones que guardas. Es un ajuste normal y global de Git, no algo exclusivo de GitOdrile.",
   identityNameLabel: "Nombre",
   identityEmailLabel: "Correo electrónico",
   identityNamePlaceholder: "Ada Lovelace",
@@ -387,6 +434,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }): R
   };
 
   const language: Language = languagePreference === "system" ? systemLanguage : languagePreference;
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
 
   const value: LanguageContextValue = {
     languagePreference,

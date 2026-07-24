@@ -57,6 +57,9 @@ The implementation must establish patterns that later repository operations can 
 - [x] React receives typed repository data rather than raw command output.
 - [x] The primary result is explained in plain language, with exact Git details available secondarily.
 - [x] Simple Rust tests cover valid repo, non-repo folder, missing folder, and linked-worktree detection using temporary repositories.
+- [x] Selecting a nested folder resolves and returns the real worktree root while retaining the selected path.
+- [x] Bare repositories are rejected explicitly rather than accepted as working projects.
+- [x] Branch, unborn-branch, and detached-HEAD states are represented as typed data rather than presentation strings.
 - [x] The required frontend and Rust checks pass.
 - [ ] The "project open" state (Overview once `open_repository` succeeds) has been visually verified in the real desktop app against a real repository, a real linked worktree, and a real non-repo folder — not just inferred from a browser-only fallback check.
 
@@ -86,6 +89,8 @@ The implementation must establish patterns that later repository operations can 
 
 # Implementation notes
 
+- Follow-up hardening resolves the worktree root with `--show-toplevel`, retains the selected path plus absolute Git/common-Git directories, rejects bare repositories, and models HEAD as `branch`, `unborn`, or `detached`.
+- Rust now returns a serializable `{ code, message, remediation }` error instead of `Result<_, String>`. React localizes the stable code; the Rust message remains a technical fallback.
 - `src-tauri/src/lib.rs`: added `open_repository(path)` Tauri command. Runs `git -C <path>` subcommands (no shell interpolation) to check `--is-inside-work-tree`, compare `--git-dir`/`--git-common-dir` for worktree detection, and read `branch --show-current`. Distinguishes "git executable not found" (`io::ErrorKind::NotFound`) from "folder isn't a repository" with separate, plain-language messages. On Windows, git is spawned with `CREATE_NO_WINDOW` so no console flashes.
 - `src-tauri/Cargo.toml` / `capabilities/default.json`: added `tauri-plugin-dialog` and the single `dialog:allow-open` permission — nothing broader.
 - `src/main.tsx`: "Open a project" opens the native folder picker (`@tauri-apps/plugin-dialog`), calls `open_repository`, and Overview renders a project summary (name, worktree badge when relevant, plain-language status message, path) on success, or an inline error on failure. Cancelling the picker resolves to `null`/no-op — no error shown. "Clone from GitHub" stays disabled ("Coming soon"); persisting recent projects is intentionally out of scope here.
@@ -96,7 +101,7 @@ The implementation must establish patterns that later repository operations can 
 
 - `cargo fmt -- --check` — pass.
 - `cargo clippy --all-targets --all-features -- -D warnings` — pass, no warnings.
-- `cargo test` — pass (4 of the 6 tests in the module cover this task; the other 2 belong to task 002).
+- `cargo test` — pass (11 tests total; repository coverage includes nested selection, bare repositories, linked worktrees, and detached HEAD).
 - `npm run typecheck` — pass.
 - `npm run build` — pass.
 - Native folder picker exercised by the user running the actual desktop app (`npm run tauri dev`) — the dialog itself isn't covered by the Rust tests since it's a native OS surface, not process logic.

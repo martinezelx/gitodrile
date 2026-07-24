@@ -26,9 +26,26 @@ type View = "overview" | "settings";
 type RepositoryInfo = {
   name: string;
   path: string;
-  branch: string;
+  selectedPath: string;
+  gitDir: string;
+  commonGitDir: string;
+  branch: string | null;
+  headState: "branch" | "detached" | "unborn";
   kind: "repository" | "worktree";
-  statusMessage: string;
+};
+type AppError = {
+  code:
+    | "path_missing"
+    | "path_unusable"
+    | "not_repository"
+    | "bare_repository"
+    | "git_missing"
+    | "git_unusable"
+    | "git_command_failed"
+    | "invalid_identity"
+    | "git_config_write_failed";
+  message: string;
+  remediation: string | null;
 };
 type GitDiagnostics = { installed: boolean; version: string | null };
 type WingetActionResult = { started: boolean; fallbackUrl: string | null };
@@ -41,6 +58,43 @@ const LAST_PROJECT_PATH_STORAGE_KEY = "gitodrile-last-project-path";
 const REOPEN_LAST_PROJECT_STORAGE_KEY = "gitodrile-reopen-last-project";
 const CONFIRM_CLOSE_PROJECT_STORAGE_KEY = "gitodrile-confirm-close-project";
 const APP_VERSION = "0.1.0";
+
+function isAppError(value: unknown): value is AppError {
+  return typeof value === "object" && value !== null && "code" in value && "message" in value;
+}
+
+function localizeAppError(error: unknown, t: ReturnType<typeof useLanguage>["t"], fallback: string): string {
+  if (!isAppError(error)) {
+    return typeof error === "string" ? error : fallback;
+  }
+
+  const messages: Record<AppError["code"], string> = {
+    path_missing: t.errorPathMissing,
+    path_unusable: t.errorPathUnusable,
+    not_repository: t.errorNotRepository,
+    bare_repository: t.errorBareRepository,
+    git_missing: t.errorGitMissing,
+    git_unusable: t.errorGitUnusable,
+    git_command_failed: t.errorGitCommandFailed,
+    invalid_identity: t.errorInvalidIdentity,
+    git_config_write_failed: t.errorGitConfigWriteFailed,
+  };
+  return messages[error.code] ?? fallback;
+}
+
+function repositoryStatus(project: RepositoryInfo, t: ReturnType<typeof useLanguage>["t"]): string {
+  if (project.headState === "detached") {
+    return project.kind === "worktree" ? t.overviewWorktreeDetached : t.overviewRepositoryDetached;
+  }
+  if (project.headState === "unborn") {
+    return project.kind === "worktree"
+      ? t.overviewWorktreeUnborn(project.branch ?? "")
+      : t.overviewRepositoryUnborn(project.branch ?? "");
+  }
+  return project.kind === "worktree"
+    ? t.overviewWorktreeBranch(project.branch ?? "")
+    : t.overviewRepositoryBranch(project.branch ?? "");
+}
 
 function readStoredBoolean(key: string, defaultValue: boolean): boolean {
   const stored = localStorage.getItem(key);
@@ -233,7 +287,7 @@ function OverviewPanel({
             {project.name}
             {project.kind === "worktree" && <span className="project-summary__badge">{t.overviewWorktreeBadge}</span>}
           </h2>
-          <p className="project-summary__meta">{project.statusMessage}</p>
+          <p className="project-summary__meta">{repositoryStatus(project, t)}</p>
           <p className="project-summary__path">{project.path}</p>
         </div>
         <button className="secondary-button" type="button" onClick={onCloseProject}>
@@ -248,7 +302,7 @@ function OverviewPanel({
       <div className="empty-state__icon" aria-hidden="true">{FOLDER_ICON}</div>
       <h2>{t.overviewEmptyTitle}</h2>
       <p>{t.overviewEmptyDescription}</p>
-      {openError && <p className="empty-state__error">{openError}</p>}
+      {openError && <p className="empty-state__error" role="alert">{openError}</p>}
       <div className="empty-state__actions">
         <button className="primary-button" type="button" onClick={onOpenProject} disabled={isOpening}>
           {isOpening ? t.overviewOpening : t.overviewOpenProject}
@@ -305,7 +359,7 @@ function SettingsPanel({
       await invoke("set_git_identity", { name: nameInput, email: emailInput });
       setIdentityMessage(t.identitySaved);
     } catch (error) {
-      setIdentityMessage(typeof error === "string" ? error : t.identityCouldntSave);
+      setIdentityMessage(localizeAppError(error, t, t.identityCouldntSave));
     } finally {
       setIsSavingIdentity(false);
     }
@@ -385,7 +439,7 @@ function SettingsPanel({
             {gitDiagnostics && !gitDiagnostics.installed && (
               <p className="settings-row__warning">{t.settingsGeneralNotDetected}</p>
             )}
-            {gitActionMessage && <p className="settings-row__hint">{gitActionMessage}</p>}
+            {gitActionMessage && <p className="settings-row__hint" role="status">{gitActionMessage}</p>}
           </div>
           {gitDiagnostics && !gitDiagnostics.installed && (
             <button className="secondary-button" type="button" onClick={() => void handleInstallGit()}>
@@ -426,7 +480,7 @@ function SettingsPanel({
           </label>
         </div>
         <div className="settings-section__footer">
-          {identityMessage && <p className="settings-row__hint">{identityMessage}</p>}
+          {identityMessage && <p className="settings-row__hint" role="status">{identityMessage}</p>}
           <button
             className="primary-button"
             type="button"
@@ -576,7 +630,7 @@ function App(): React.JSX.Element {
       setProject(info);
       localStorage.setItem(LAST_PROJECT_PATH_STORAGE_KEY, info.path);
     } catch (error) {
-      setOpenError(typeof error === "string" ? error : t.overviewCouldntOpenFolder);
+      setOpenError(localizeAppError(error, t, t.overviewCouldntOpenFolder));
     } finally {
       setIsOpening(false);
     }

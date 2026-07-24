@@ -1,7 +1,7 @@
 #![allow(linker_messages)]
 
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 #[cfg(target_os = "windows")]
@@ -28,12 +28,54 @@ fn git_command(repo_path: &str) -> Command {
     command
 }
 
-fn run_git(repo_path: &str, args: &[&str]) -> Result<Output, String> {
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct AppError {
+    code: AppErrorCode,
+    message: String,
+    remediation: Option<String>,
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum AppErrorCode {
+    PathMissing,
+    PathUnusable,
+    NotRepository,
+    BareRepository,
+    GitMissing,
+    GitUnusable,
+    GitCommandFailed,
+    InvalidIdentity,
+    GitConfigWriteFailed,
+}
+
+impl AppError {
+    fn new(code: AppErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            remediation: None,
+        }
+    }
+
+    fn with_remediation(mut self, remediation: impl Into<String>) -> Self {
+        self.remediation = Some(remediation.into());
+        self
+    }
+}
+
+fn run_git(repo_path: &str, args: &[&str]) -> Result<Output, AppError> {
     git_command(repo_path).args(args).output().map_err(|error| {
         if error.kind() == ErrorKind::NotFound {
-            "Git isn't installed, or isn't on your PATH. Install Git and try again.".to_string()
+            AppError::new(
+                AppErrorCode::GitMissing,
+                "Git isn't installed, or isn't available on PATH.",
+            )
+            .with_remediation("Install Git, then reopen GitOdrile and try again.")
         } else {
-            "Couldn't run git.".to_string()
+            AppError::new(AppErrorCode::GitUnusable, "Git couldn't be started.")
+                .with_remediation("Check the Git installation and try again.")
         }
     })
 }
@@ -42,21 +84,70 @@ fn git_stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
+fn checked_git_stdout(output: Output) -> Result<String, AppError> {
+    if output.status.success() {
+        Ok(git_stdout(&output))
+    } else {
+        Err(AppError::new(
+            AppErrorCode::GitCommandFailed,
+            "Git couldn't inspect this project.",
+        )
+        .with_remediation("Check that the folder and its Git metadata are readable."))
+    }
+}
+
+fn display_path(path: PathBuf) -> String {
+    let value = path.to_string_lossy().to_string();
+    #[cfg(target_os = "windows")]
+    {
+        value
+            .strip_prefix(r"\\?\UNC\")
+            .map(|rest| format!(r"\\{rest}"))
+            .or_else(|| value.strip_prefix(r"\\?\").map(ToString::to_string))
+            .unwrap_or(value)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        value
+    }
+}
+
+fn normalized_path(base: &Path, raw_path: &str) -> PathBuf {
+    let path = Path::new(raw_path);
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    };
+    absolute.canonicalize().unwrap_or(absolute)
+}
+
 #[derive(serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct RepositoryInfo {
     name: String,
     path: String,
-    branch: String,
+    selected_path: String,
+    git_dir: String,
+    common_git_dir: String,
+    branch: Option<String>,
+    head_state: HeadState,
     kind: RepositoryKind,
-    status_message: String,
 }
 
-#[derive(serde::Serialize, Debug)]
+#[derive(serde::Serialize, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum RepositoryKind {
     Repository,
     Worktree,
+}
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum HeadState {
+    Branch,
+    Detached,
+    Unborn,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -80,51 +171,99 @@ fn app_status() -> &'static str {
 }
 
 #[tauri::command]
-fn open_repository(path: String) -> Result<RepositoryInfo, String> {
+fn open_repository(path: String) -> Result<RepositoryInfo, AppError> {
     let repo_path = Path::new(&path);
-    if !repo_path.is_dir() {
-        return Err("That folder doesn't exist.".to_string());
+    let metadata = repo_path.metadata().map_err(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            AppError::new(AppErrorCode::PathMissing, "That folder doesn't exist.")
+                .with_remediation("Choose another folder.")
+        } else {
+            AppError::new(AppErrorCode::PathUnusable, "That folder can't be read.")
+                .with_remediation("Check the folder permissions and try again.")
+        }
+    })?;
+    if !metadata.is_dir() {
+        return Err(
+            AppError::new(AppErrorCode::PathUnusable, "That path isn't a folder.")
+                .with_remediation("Choose a folder instead of a file."),
+        );
     }
+    let selected_path = display_path(repo_path.canonicalize().map_err(|_| {
+        AppError::new(AppErrorCode::PathUnusable, "That folder can't be resolved.")
+            .with_remediation("Check the folder permissions and try again.")
+    })?);
 
     let is_repo = run_git(&path, &["rev-parse", "--is-inside-work-tree"])?;
     if !is_repo.status.success() {
-        return Err("This folder isn't a Git repository.".to_string());
+        return Err(AppError::new(
+            AppErrorCode::NotRepository,
+            "This folder isn't inside a Git project.",
+        )
+        .with_remediation("Choose a folder inside an existing Git project."));
+    }
+    if git_stdout(&is_repo) != "true" {
+        let is_bare = run_git(&path, &["rev-parse", "--is-bare-repository"])?;
+        if is_bare.status.success() && git_stdout(&is_bare) == "true" {
+            return Err(AppError::new(
+                AppErrorCode::BareRepository,
+                "Bare Git repositories aren't supported yet.",
+            )
+            .with_remediation("Choose a project folder with working files."));
+        }
+        return Err(AppError::new(
+            AppErrorCode::NotRepository,
+            "This folder isn't inside a Git project.",
+        )
+        .with_remediation("Choose a folder inside an existing Git project."));
     }
 
-    // A linked worktree's --git-dir (e.g. .git/worktrees/<name>) differs from
-    // the --git-common-dir shared with the main checkout; a normal repository's
-    // are the same path. This is the same check `git` itself relies on.
-    let git_dir = git_stdout(&run_git(&path, &["rev-parse", "--git-dir"])?);
-    let common_dir = git_stdout(&run_git(&path, &["rev-parse", "--git-common-dir"])?);
-    let kind = if git_dir == common_dir {
+    let root = checked_git_stdout(run_git(&path, &["rev-parse", "--show-toplevel"])?)?;
+    let root_path = normalized_path(repo_path, &root);
+    let git_dir_raw = checked_git_stdout(run_git(&path, &["rev-parse", "--absolute-git-dir"])?)?;
+    let common_dir_raw = checked_git_stdout(run_git(&path, &["rev-parse", "--git-common-dir"])?)?;
+    let git_dir_path = normalized_path(&root_path, &git_dir_raw);
+    let common_dir_path = normalized_path(&root_path, &common_dir_raw);
+
+    // A linked worktree has its own Git directory but shares a common Git
+    // directory with the main checkout.
+    let kind = if git_dir_path == common_dir_path {
         RepositoryKind::Repository
     } else {
         RepositoryKind::Worktree
     };
 
-    let branch = git_stdout(&run_git(&path, &["branch", "--show-current"])?);
-    let branch = if branch.is_empty() {
-        "detached HEAD".to_string()
+    let symbolic_head = run_git(&path, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
+    let (branch, head_state) = if symbolic_head.status.success() {
+        let branch = Some(git_stdout(&symbolic_head));
+        let verified_head = run_git(&path, &["rev-parse", "--verify", "HEAD"])?;
+        if verified_head.status.success() {
+            (branch, HeadState::Branch)
+        } else {
+            (branch, HeadState::Unborn)
+        }
     } else {
-        branch
+        let verified_head = run_git(&path, &["rev-parse", "--verify", "HEAD"])?;
+        if verified_head.status.success() {
+            (None, HeadState::Detached)
+        } else {
+            (None, HeadState::Unborn)
+        }
     };
 
-    let name = repo_path
+    let name = root_path
         .file_name()
         .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.clone());
-
-    let status_message = match kind {
-        RepositoryKind::Repository => format!("This is a Git repository on branch {branch}."),
-        RepositoryKind::Worktree => format!("This is a linked worktree on branch {branch}."),
-    };
+        .unwrap_or_else(|| display_path(root_path.clone()));
 
     Ok(RepositoryInfo {
         name,
-        path,
+        path: display_path(root_path),
+        selected_path,
+        git_dir: display_path(git_dir_path),
+        common_git_dir: display_path(common_dir_path),
         branch,
+        head_state,
         kind,
-        status_message,
     })
 }
 
@@ -290,7 +429,7 @@ fn write_global_git_config(
     key: &str,
     value: &str,
     config_override: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let mut command = base_git_command();
     if let Some(path) = config_override {
         command.env("GIT_CONFIG_GLOBAL", path);
@@ -298,9 +437,21 @@ fn write_global_git_config(
     let status = command
         .args(["config", "--global", key, value])
         .status()
-        .map_err(|_| "Couldn't run git.".to_string())?;
+        .map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                AppError::new(AppErrorCode::GitMissing, "Git isn't available.")
+                    .with_remediation("Install Git and try again.")
+            } else {
+                AppError::new(AppErrorCode::GitUnusable, "Git couldn't be started.")
+                    .with_remediation("Check the Git installation and try again.")
+            }
+        })?;
     if !status.success() {
-        return Err(format!("Couldn't save {key}."));
+        return Err(AppError::new(
+            AppErrorCode::GitConfigWriteFailed,
+            format!("Git couldn't save {key}."),
+        )
+        .with_remediation("Check the global Git configuration and try again."));
     }
     Ok(())
 }
@@ -309,11 +460,14 @@ fn set_git_identity_with_override(
     name: &str,
     email: &str,
     config_override: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let name = name.trim();
     let email = email.trim();
     if name.is_empty() || email.is_empty() {
-        return Err("Enter both a name and an email.".to_string());
+        return Err(AppError::new(
+            AppErrorCode::InvalidIdentity,
+            "Enter both a name and an email.",
+        ));
     }
 
     write_global_git_config("user.name", name, config_override)?;
@@ -330,7 +484,7 @@ fn get_git_identity() -> GitIdentity {
 }
 
 #[tauri::command]
-fn set_git_identity(name: String, email: String) -> Result<(), String> {
+fn set_git_identity(name: String, email: String) -> Result<(), AppError> {
     set_git_identity_with_override(&name, &email, None)
 }
 
@@ -400,7 +554,38 @@ mod tests {
 
         let info = open_repository(path.clone()).expect("a git init'd folder should open");
         assert!(matches!(info.kind, RepositoryKind::Repository));
-        assert_eq!(info.path, path);
+        assert_eq!(
+            info.path,
+            display_path(Path::new(&path).canonicalize().unwrap())
+        );
+        assert_eq!(info.selected_path, info.path);
+        assert_eq!(info.head_state, HeadState::Unborn);
+        assert!(info.branch.is_some());
+
+        let _ = fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn open_repository_resolves_a_nested_selection_to_the_worktree_root() {
+        let path = unique_temp_dir("nested-repo");
+        git_init(&path);
+        let nested = Path::new(&path).join("one").join("two");
+        fs::create_dir_all(&nested).expect("create nested folder");
+
+        let info = open_repository(nested.to_string_lossy().to_string())
+            .expect("a folder inside a repository should open");
+        assert_eq!(
+            info.name,
+            Path::new(&path).file_name().unwrap().to_string_lossy()
+        );
+        assert_eq!(
+            info.path,
+            display_path(Path::new(&path).canonicalize().unwrap())
+        );
+        assert_eq!(
+            info.selected_path,
+            display_path(nested.canonicalize().unwrap())
+        );
 
         let _ = fs::remove_dir_all(&path);
     }
@@ -410,7 +595,8 @@ mod tests {
         let path = unique_temp_dir("non-repo");
 
         let error = open_repository(path.clone()).expect_err("a plain folder isn't a repo");
-        assert_eq!(error, "This folder isn't a Git repository.");
+        assert_eq!(error.code, AppErrorCode::NotRepository);
+        assert!(error.remediation.is_some());
 
         let _ = fs::remove_dir_all(&path);
     }
@@ -425,7 +611,23 @@ mod tests {
         let path = path.to_string_lossy().to_string();
 
         let error = open_repository(path).expect_err("a missing folder can't be opened");
-        assert_eq!(error, "That folder doesn't exist.");
+        assert_eq!(error.code, AppErrorCode::PathMissing);
+        assert!(error.remediation.is_some());
+    }
+
+    #[test]
+    fn open_repository_rejects_a_bare_repository() {
+        let path = unique_temp_dir("bare-repo");
+        let status = git_command(&path)
+            .args(["init", "--bare", "-q"])
+            .status()
+            .expect("run git init --bare");
+        assert!(status.success(), "git init --bare should succeed");
+
+        let error = open_repository(path.clone()).expect_err("a bare repo has no working files");
+        assert_eq!(error.code, AppErrorCode::BareRepository);
+
+        let _ = fs::remove_dir_all(&path);
     }
 
     #[test]
@@ -457,12 +659,33 @@ mod tests {
 
         let info = open_repository(worktree_path.clone()).expect("the linked worktree should open");
         assert!(matches!(info.kind, RepositoryKind::Worktree));
+        assert_eq!(info.head_state, HeadState::Branch);
+        assert_eq!(info.branch.as_deref(), Some("gitodrile-test-branch"));
+        assert_ne!(info.git_dir, info.common_git_dir);
 
         let _ = git_command(&main_path)
             .args(["worktree", "remove", "--force", &worktree_path])
             .status();
         let _ = fs::remove_dir_all(&main_path);
         let _ = fs::remove_dir_all(&worktree_path);
+    }
+
+    #[test]
+    fn open_repository_reports_a_detached_head_without_calling_it_a_branch() {
+        let path = unique_temp_dir("detached-head");
+        git_init(&path);
+        git_commit_empty(&path);
+        let status = git_command(&path)
+            .args(["checkout", "--detach", "-q"])
+            .status()
+            .expect("detach HEAD");
+        assert!(status.success(), "git checkout --detach should succeed");
+
+        let info = open_repository(path.clone()).expect("a detached repository should open");
+        assert_eq!(info.head_state, HeadState::Detached);
+        assert_eq!(info.branch, None);
+
+        let _ = fs::remove_dir_all(&path);
     }
 
     #[test]
@@ -514,6 +737,6 @@ mod tests {
     fn set_git_identity_rejects_empty_fields() {
         let error = set_git_identity_with_override(" ", "ada@example.com", None)
             .expect_err("empty name should be rejected");
-        assert_eq!(error, "Enter both a name and an email.");
+        assert_eq!(error.code, AppErrorCode::InvalidIdentity);
     }
 }
