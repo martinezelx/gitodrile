@@ -1,6 +1,6 @@
 ---
 id: 003
-title: Expand Settings with Git identity, startup, and safety controls
+title: Expand Settings with Git identity, startup, safety, and language controls
 status: active
 priority: normal
 type: feature
@@ -13,11 +13,11 @@ completed:
 
 # Goal
 
-Grow Settings beyond Appearance/General with three concrete, independently useful sections: Git identity (name/email used for saved versions), startup behavior (reopen last project), and a safety confirmation before closing a project.
+Grow Settings beyond Appearance/General with four concrete, independently useful sections: Git identity (name/email used for saved versions), startup behavior (reopen last project), a safety confirmation before closing a project, and a Language setting (English/Spanish, auto-detected from the system, overridable in Settings).
 
 # User outcome
 
-A user can tell GitOdrile who they are for the commits it will eventually create, does not have to re-open their project by hand every time they launch the app, and gets a chance to back out if they click "Close project" by mistake.
+A user can tell GitOdrile who they are for the commits it will eventually create, does not have to re-open their project by hand every time they launch the app, gets a chance to back out if they click "Close project" by mistake, and sees GitOdrile in their own language automatically — with the ability to override that choice — instead of being stuck with English regardless of their system locale.
 
 # Context
 
@@ -30,6 +30,16 @@ Two of the three chosen areas needed narrowing to stay concrete instead of specu
 - "Safety confirmations" has no destructive action to attach to yet (no discard, no delete, no history rewrite — none of that exists in the app). The only real candidate today is "Close project", which isn't destructive (it doesn't delete anything) but is the one action a confirmation can meaningfully guard right now. Scoped to that single action rather than building a general confirmation framework with no other consumer.
 - "Startup behavior" (reopen last project) depends on remembering the last opened project. `work/backlog.md` lists "Persist and reopen recent projects" separately under Foundation, implying a fuller recent-projects list/UI. This task only persists the single last-opened path (localStorage, not Rust-side) to support one toggle — it is not the full recent-projects feature.
 
+## Added scope: Language (English/Spanish)
+
+The user asked to add a Language setting to this same task: GitOdrile should support English and Spanish, auto-detect the system language on first run, and let the user override it in Settings — mirroring how `theme` already works (`ThemePreference = "system" | "light" | "dark"`, persisted in `localStorage`, with a segmented control in Settings → Appearance).
+
+**Audit of the current codebase before scoping this in** (`src/main.tsx`, `src-tauri/src/lib.rs`):
+
+- There is currently **zero i18n infrastructure**. Every user-facing string is a hardcoded English literal directly in JSX/TSX — nav labels, `title`/`aria-label` attributes, the command palette (placeholder, hints, all command labels), Settings section headings/descriptions, button labels, the About dialog, and the close-confirmation dialog.
+- A meaningful subset of user-facing text is **generated in Rust, not React**, and returned to the frontend as plain prose that is displayed directly (per `AGENTS.md`'s existing "structured errors, not raw output" rule, but the *message text itself* is still English prose baked into Rust): `open_repository`'s status message ("This is a Git repository on branch {branch}.", "This is a linked worktree on branch {branch}.", "detached HEAD") and its error messages ("That folder doesn't exist.", "This folder isn't a Git repository.", "Git isn't installed, or isn't on your PATH..."), plus `set_git_identity`'s "Enter both a name and an email." / "Couldn't save {key}." This is the single biggest scope risk: translating it means Rust commands must stop returning presentation strings and instead return structured/typed results (an error code/tag + any interpolation data) for React to localize — a real architecture change, not just adding a dictionary.
+- To keep this task concrete (same discipline already applied to "safety confirmations" and "startup behavior" above), **this pass covers only strings owned by the React layer**. Rust-originated strings stay English-only for now; see Out of scope and the follow-up note in Decisions.
+
 # Scope
 
 - Rust: `get_git_identity` (reads global `user.name`/`user.email` via `git config --global --get`, each independently optional/unset) and `set_git_identity(name, email)` (writes both via `git config --global`).
@@ -37,6 +47,9 @@ Two of the three chosen areas needed narrowing to stay concrete instead of specu
 - Frontend: persist the path of the most recently opened project in `localStorage` whenever `open_repository` succeeds.
 - Settings → new "Startup" section: a toggle "Reopen last project on launch". When enabled and a stored path exists, the app calls `open_repository` with it once on launch; a failure (folder moved/deleted/no longer a repo) is handled the same as any other open failure — silently cleared, no error toast on launch.
 - Settings → new "Safety" section: a toggle "Confirm before closing a project" (default on). When enabled, clicking "Close project" (from Overview or the command palette) shows a confirmation dialog before actually clearing the open project; when disabled, it closes immediately as it does today.
+- A minimal, hand-rolled i18n layer: a `LanguagePreference` type (`"system" | "en" | "es"`, mirroring `ThemePreference`), a translation dictionary keyed by every React-owned user-facing string (nav, command palette, all Settings sections including the three added by this task, About dialog, close-confirmation dialog, empty/error states, button labels, and every `title`/`aria-label` attribute — not just visible text), and a small `t()` accessor exposed via React context, replacing the hardcoded English literals in `src/main.tsx`.
+- System-language detection: read the OS locale via `@tauri-apps/plugin-os`'s `locale()` (new dependency; more reliable than the webview's `navigator.language` for a desktop app), falling back to `navigator.language` when running outside Tauri (same "`__TAURI_INTERNALS__` in window" fallback pattern already used for `appWindow`). Normalize to a primary subtag (e.g. `"es-MX"` → `"es"`) and match against the supported set `{en, es}`; anything else (e.g. `"fr"`, `"de-DE"`) falls back to English. This resolution is a pure function and gets a unit test — the first real `vitest` test in the repo (currently `npm run test` finds none).
+- Settings → new "Language" section: a segmented control (System / English / Español), visually identical to the existing Appearance/Theme control, persisting the explicit choice to `localStorage` and re-rendering all translated strings immediately (no restart required).
 
 # Out of scope
 
@@ -45,6 +58,10 @@ Two of the three chosen areas needed narrowing to stay concrete instead of specu
 - Confirmations for any other action (there are no other destructive actions implemented yet).
 - External editor/terminal integration — explicitly deferred by the user.
 - Validating email format beyond "non-empty" — Git itself doesn't require a syntactically valid email.
+- **Localizing Rust-originated strings**: `open_repository`'s status/error messages and `set_git_identity`'s validation error stay English-only. Translating these requires Rust to return structured results instead of presentation strings — a real API change, not an addition to a dictionary — and deserves its own task once this pass ships. Flagged here rather than silently dropped so it isn't lost.
+- Any language beyond English/Spanish.
+- A language picker/dropdown with every locale name spelled in its own language, region-specific dialects (e.g. separate `es-MX` vs `es-ES` copy), or right-to-left layout support — only two flat languages, no regional variants.
+- Pluralization/interpolation-aware translation libraries (e.g. ICU MessageFormat) — no React-owned string in scope needs plurals or variable interpolation (the one interpolated string that exists, the branch name in the repository status message, is Rust-owned and out of scope here).
 
 # Acceptance criteria
 
@@ -55,6 +72,12 @@ Two of the three chosen areas needed narrowing to stay concrete instead of specu
 - [x] With the safety toggle on (default), closing a project asks for confirmation first; with it off, closing is immediate.
 - [x] The required frontend and Rust checks pass.
 - [ ] Visually verified in the real desktop app: saving identity, the startup auto-reopen (including the stale-path fallback), and the close confirmation.
+- [x] Every React-owned user-facing string (including `title`/`aria-label` attributes, not just visible text) is routed through the translation dictionary — no leftover hardcoded English literal outside it (verified by grepping `src/main.tsx` for capitalized multi-word literals after the change: none left outside `i18n.tsx`, brand name, and version numbers).
+- [x] On first launch with no stored preference, the app renders in Spanish when the OS locale is Spanish (any region, e.g. `es-MX`, `es-ES`) and in English for any other system locale. Verified in the browser preview (outside Tauri, via the `navigator.language` fallback — see Validation); the `tauri-plugin-os` path itself needs the real desktop app (see the new unchecked criterion below).
+- [x] Settings → Language shows System/English/Español, and choosing one immediately re-renders the app in that language and persists across restarts, overriding auto-detection.
+- [x] The locale-resolution function (system locale string → `"en" | "es"`) has a passing unit test covering at least: an `es-*` locale, an `en-*` locale, and an unsupported locale (e.g. `fr-FR`) falling back to English.
+- [x] The required frontend checks (`npm run typecheck`, `npm run test`, `npm run build`) pass with the language feature included.
+- [ ] Visually verified in the real desktop app: the `tauri-plugin-os` locale detection (not just the `navigator.language` browser fallback), and the close-confirmation dialog's translated, name-interpolated body with a real open project.
 
 # Relevant files
 
@@ -65,18 +88,34 @@ Two of the three chosen areas needed narrowing to stay concrete instead of specu
 - `src-tauri/src/lib.rs`
 - `src/main.tsx`
 - `src/styles.css`
+- `src-tauri/Cargo.toml` / `src-tauri/capabilities/default.json` (new `tauri-plugin-os` dependency + capability, for locale detection)
+- `package.json` (new `@tauri-apps/plugin-os` dependency)
 
 # Dependencies
 
 - Builds on the `git_command`/`base_git_command` process-spawning pattern from tasks 001/002.
+- Language detection depends on adding `tauri-plugin-os`/`@tauri-apps/plugin-os`, the same "add the plugin, keep its capability minimal and explicit" pattern already used for `tauri-plugin-dialog` (task 001) and `tauri-plugin-opener` (task 002).
 
 # Decisions
 
 - Global-only identity, no per-repo override — matches this task's scope; per-repo identity is a plausible later task, not bundled here.
 - Reopen-on-launch persists only the last path in `localStorage`, not a full recent-projects list — keeps this task independent of the separate, unbuilt "Persist and reopen recent projects" backlog item.
 - The only confirmation built now guards "Close project" — the sole existing action a confirmation can attach to; a general confirmation framework for hypothetical future destructive actions was rejected as speculative.
+- **Hand-rolled i18n, not a library** (no `react-i18next`/`react-intl`/`lingui`): `AGENTS.md` says to avoid a large UI framework until the interaction model stabilizes and to avoid dependencies for trivial utilities. Two languages, no plurals, and only one interpolated value anywhere in scope (the branch name — and that's Rust-owned, out of scope here) don't justify a full i18n library's API surface and bundle size. A plain dictionary object + a `t()` context accessor is the smallest thing that solves this; revisit if/when plural rules, more languages, or richer interpolation are actually needed.
+- **OS locale via `tauri-plugin-os`, not `navigator.language` alone**: the webview's reported language can drift from the actual OS setting depending on platform/embedding; the plugin reads the real system locale, matching how this app already prefers native/platform-accurate signals (e.g. `git_diagnostics` over guessing, `winget` for installs) over web-only approximations. `navigator.language` remains the fallback when there's no Tauri runtime (browser dev/testing), consistent with the existing `"__TAURI_INTERNALS__" in window` fallback for `appWindow`.
+- **Rust-originated strings deferred, not silently dropped**: `open_repository` and `set_git_identity` return English prose today. Translating them means changing what Rust returns (structured codes, not sentences) — out of scope for this pass, called out explicitly in "Out of scope" so it's tracked as a real follow-up rather than an oversight.
+- **Preference persistence mirrors `theme` exactly**: `LanguagePreference = "system" | "en" | "es"`, its own `localStorage` key, same `system`-resolves-to-a-concrete-value shape as `ThemePreference`/`readStoredTheme`/`applyTheme` — reusing an already-established, working pattern instead of inventing a new one.
 
 # Implementation notes
+
+- `src/i18n.tsx` (new file): `Language` (`"en" | "es"`), `LanguagePreference` (`"system" | Language`), the pure `resolveLanguage(locale)` function (splits on `-`/`_`, matches the primary subtag against `es`, defaults to `en`), a flat `Translations` interface (one property per string/attribute — no nested keys or dot-path lookups, since with two flat languages and no plurals a plain object is simpler and fully type-checked), the `en`/`es` dictionaries, and `LanguageProvider`/`useLanguage()` (React context exposing `{ languagePreference, setLanguagePreference, language, t }`). `LANGUAGE_NAMES` (`{ en: "English", es: "Español" }`) is a separate, non-translated constant — language autonyms are shown the same regardless of the active UI language, same convention as virtually every OS/app language picker.
+- Detection: `LanguageProvider` calls `@tauri-apps/plugin-os`'s `locale()` in a `useEffect`, resolving it through `resolveLanguage` and updating `systemLanguage`; the initial state is `resolveLanguage(navigator.language)` so there's a sensible value before the (async) plugin call resolves, and so the app still gets a real auto-detected language when running outside Tauri (browser dev/testing) — the plugin call there simply rejects and is swallowed, same `.catch(() => undefined)` idiom used elsewhere in this codebase.
+- `src-tauri/Cargo.toml` / `src-tauri/capabilities/default.json` / `src-tauri/src/lib.rs`: added the `tauri-plugin-os` crate, registered `.plugin(tauri_plugin_os::init())`, and granted only `os:allow-locale` (not the broader `os:default`) — same "narrowest permission that does the job" pattern as the existing `dialog:allow-open`/`opener:allow-open-url` entries.
+- `package.json`: added `@tauri-apps/plugin-os` (JS side of the same plugin).
+- `src/main.tsx`: every hardcoded string (nav labels, titlebar, command palette, all five Settings sections including the new "Language" one, About dialog, close-confirmation dialog, empty/error states, and every `title`/`aria-label` attribute) now reads from `t` via `useLanguage()`, called directly in `App`, `CommandPalette`, `OverviewPanel`, and `SettingsPanel` (no prop-drilling needed since `LanguageProvider` wraps the whole tree). `THEME_LABELS` (a static English-only lookup) was removed in favor of reading `t.commonSystem`/`t.themeLight`/`t.themeDark` directly. Settings → Language is a fifth `segmented-control` section, visually identical to Appearance/Theme, iterating `LANGUAGE_ORDER = ["system", "en", "es"]`.
+- Root render: `<App />` is now wrapped in `<LanguageProvider>`.
+- `src/i18n.test.ts` (new file, first real `vitest` test in this repo): covers `resolveLanguage` for Spanish/English regions, an unsupported locale (`fr-FR`, `de`) falling back to English, and null/undefined/empty input.
+- Deliberately **not** routed through the dictionary: the `GitOdrile` brand name, the `APP_VERSION` string, and the `identityNamePlaceholder`/`identityEmailPlaceholder` example values (kept as identical literal example text in both `en`/`es` dictionaries — they're the same example person, not translated prose). Rust-originated strings (`open_repository`'s status/error messages, `set_git_identity`'s validation error) remain English-only per the Out-of-scope note above.
 
 - `src-tauri/src/lib.rs`: added `get_git_identity`/`set_git_identity` Tauri commands, backed by `read_global_git_config`/`write_global_git_config` helpers that shell out to `git config --global [--get] <key>`. Both accept an optional `config_override` (sets `GIT_CONFIG_GLOBAL` on the child process) so tests can round-trip through a temporary config file instead of touching the real machine's `~/.gitconfig`; production commands always pass `None`. `set_git_identity` rejects blank name/email with a plain-language error before touching git.
 - `src/main.tsx`: `SettingsPanel` gained three sections — "Git identity" (two text inputs pre-filled from `get_git_identity`, Save button, inline save/error message), "Startup" (`ToggleSwitch` for "Reopen last project on launch"), and "Safety" (`ToggleSwitch` for "Confirm before closing a project"). Added a small reusable `ToggleSwitch` component (`role="switch"`, click toggles a boolean) styled in `src/styles.css` (`.toggle-switch`).
@@ -93,3 +132,14 @@ Two of the three chosen areas needed narrowing to stay concrete instead of specu
 - `npm run build` — pass.
 - Verified in the browser preview (`npm run dev`, outside Tauri): all four new sections render with the expected copy; toggling "Reopen last project on launch" flips `aria-checked` and persists `gitodrile-reopen-last-project`/`gitodrile-confirm-close-project` in `localStorage`; saving Git identity without a Tauri backend fails gracefully with "Couldn't save that." (no crash, no console error) — the same graceful-outside-Tauri pattern as the existing Install Git button.
 - **Not yet done:** the last acceptance criterion (real desktop app: identity actually written to `~/.gitconfig`, startup auto-reopen including the stale-path fallback, and the close-confirmation dialog) — needs a run of the real Tauri app, same as the outstanding items on tasks 001/002.
+
+## Language validation
+
+- `cargo fmt -- --check` — pass.
+- `cargo clippy --all-targets --all-features -- -D warnings` — pass, no warnings (with the new `tauri-plugin-os` dependency).
+- `cargo test` — 8 passed, 0 failed (unchanged by this addition — no Rust behavior changed, only a plugin registration).
+- `npm run typecheck` — pass.
+- `npm run test` — **4 passed** (`src/i18n.test.ts`, the first real test file in this repo): Spanish regions (`es`, `es-ES`, `es-MX`, `es_MX`) resolve to Spanish; English regions resolve to English; unsupported locales (`fr-FR`, `de`) and empty/null/undefined input fall back to English.
+- `npm run build` — pass.
+- Verified in the browser preview (`npm run dev`, outside Tauri, so via the `navigator.language` fallback rather than `tauri-plugin-os`): the app auto-rendered in Spanish on first load (this machine's browser locale); every Settings section, the empty-state Overview, and the About dialog rendered fully translated; switching Settings → Language to English re-rendered every string immediately (no reload) and persisted `gitodrile-language: "en"` in `localStorage`, surviving a manual reload; switching back to Spanish (via `localStorage` + reload, to double-check without relying on the same click path) also rendered correctly.
+- **Not yet done:** confirming the real `tauri-plugin-os` locale detection (as opposed to the browser fallback) and the close-confirmation dialog's name-interpolated body (`closeConfirmBodyNamed`) against a real opened project — both need the real desktop app, same as the other outstanding real-app checks above.

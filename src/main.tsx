@@ -18,6 +18,7 @@ import {
   Monitor,
   FolderOpen,
 } from "lucide-react";
+import { LANGUAGE_NAMES, LanguageProvider, useLanguage, type Language, type LanguagePreference } from "./i18n";
 import "./styles.css";
 
 type ThemePreference = "system" | "light" | "dark";
@@ -76,13 +77,8 @@ const THEME_ICONS: Record<ThemePreference, React.JSX.Element> = {
   dark: <Moon />,
 };
 
-const THEME_LABELS: Record<ThemePreference, string> = {
-  system: "System",
-  light: "Light",
-  dark: "Dark",
-};
-
 const THEME_ORDER: ThemePreference[] = ["system", "light", "dark"];
+const LANGUAGE_ORDER: LanguagePreference[] = ["system", "en", "es"];
 
 const NAV_ICONS = {
   overview: <LayoutDashboard />,
@@ -118,6 +114,7 @@ function CommandPalette({
   onClose: () => void;
   commands: Command[];
 }): React.JSX.Element | null {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -164,7 +161,7 @@ function CommandPalette({
         className="palette-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t.paletteAriaLabel}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="palette-input-row">
@@ -177,7 +174,7 @@ function CommandPalette({
             aria-expanded="true"
             aria-controls="palette-list"
             aria-autocomplete="list"
-            placeholder="Jump to a view or action…"
+            placeholder={t.palettePlaceholder}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -187,7 +184,7 @@ function CommandPalette({
           />
         </div>
         <ul className="palette-list" id="palette-list" role="listbox">
-          {filtered.length === 0 && <li className="palette-empty">No matching commands</li>}
+          {filtered.length === 0 && <li className="palette-empty">{t.paletteNoMatches}</li>}
           {filtered.map((command, index) => (
             <li
               key={command.id}
@@ -225,6 +222,8 @@ function OverviewPanel({
   onOpenProject: () => void;
   onCloseProject: () => void;
 }): React.JSX.Element {
+  const { t } = useLanguage();
+
   if (project) {
     return (
       <div className="project-summary">
@@ -232,13 +231,13 @@ function OverviewPanel({
         <div className="project-summary__body">
           <h2>
             {project.name}
-            {project.kind === "worktree" && <span className="project-summary__badge">Worktree</span>}
+            {project.kind === "worktree" && <span className="project-summary__badge">{t.overviewWorktreeBadge}</span>}
           </h2>
           <p className="project-summary__meta">{project.statusMessage}</p>
           <p className="project-summary__path">{project.path}</p>
         </div>
         <button className="secondary-button" type="button" onClick={onCloseProject}>
-          Close project
+          {t.overviewCloseProject}
         </button>
       </div>
     );
@@ -247,15 +246,15 @@ function OverviewPanel({
   return (
     <div className="empty-state">
       <div className="empty-state__icon" aria-hidden="true">{FOLDER_ICON}</div>
-      <h2>No project open</h2>
-      <p>Open a Git project to review changes, save versions, publish work, and recover from mistakes.</p>
+      <h2>{t.overviewEmptyTitle}</h2>
+      <p>{t.overviewEmptyDescription}</p>
       {openError && <p className="empty-state__error">{openError}</p>}
       <div className="empty-state__actions">
         <button className="primary-button" type="button" onClick={onOpenProject} disabled={isOpening}>
-          {isOpening ? "Opening…" : "Open a project"}
+          {isOpening ? t.overviewOpening : t.overviewOpenProject}
         </button>
-        <button className="secondary-button" type="button" disabled title="Coming soon">
-          Clone from GitHub
+        <button className="secondary-button" type="button" disabled title={t.overviewCloneComingSoonTitle}>
+          {t.overviewCloneFromGithub}
         </button>
       </div>
     </div>
@@ -283,6 +282,7 @@ function SettingsPanel({
   confirmCloseProject: boolean;
   setConfirmCloseProject: (value: boolean) => void;
 }): React.JSX.Element {
+  const { t, languagePreference, setLanguagePreference } = useLanguage();
   const [gitActionMessage, setGitActionMessage] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
@@ -303,9 +303,9 @@ function SettingsPanel({
     setIsSavingIdentity(true);
     try {
       await invoke("set_git_identity", { name: nameInput, email: emailInput });
-      setIdentityMessage("Saved.");
+      setIdentityMessage(t.identitySaved);
     } catch (error) {
-      setIdentityMessage(typeof error === "string" ? error : "Couldn't save that.");
+      setIdentityMessage(typeof error === "string" ? error : t.identityCouldntSave);
     } finally {
       setIsSavingIdentity(false);
     }
@@ -320,34 +320,26 @@ function SettingsPanel({
       const result = await invoke<WingetActionResult>(command);
       if (result.fallbackUrl) {
         await openUrl(result.fallbackUrl);
-        setGitActionMessage("Opened the official download page in your browser.");
+        setGitActionMessage(t.gitOpenedDownloadPage);
       } else {
         setGitActionMessage(launchedMessage);
       }
     } catch {
-      setGitActionMessage("Couldn't start that.");
+      setGitActionMessage(t.gitCouldntStart);
     }
   };
 
-  const handleInstallGit = (): Promise<void> =>
-    runWingetAction(
-      "install_git",
-      "Installer launched — this can take a moment to appear. Reopen GitOdrile once it finishes.",
-    );
-  const handleUpdateGit = (): Promise<void> =>
-    runWingetAction(
-      "update_git",
-      "Update launched — this can take a moment to appear. Reopen GitOdrile once it finishes.",
-    );
+  const handleInstallGit = (): Promise<void> => runWingetAction("install_git", t.gitInstallerLaunched);
+  const handleUpdateGit = (): Promise<void> => runWingetAction("update_git", t.gitUpdateLaunched);
 
   return (
     <div className="settings-view">
       <section className="settings-section">
         <div className="settings-section__heading">
-          <h2>Appearance</h2>
-          <p>Choose how GitOdrile looks. "System" follows your OS setting automatically.</p>
+          <h2>{t.settingsAppearanceTitle}</h2>
+          <p>{t.settingsAppearanceDescription}</p>
         </div>
-        <div className="segmented-control" role="radiogroup" aria-label="Theme">
+        <div className="segmented-control" role="radiogroup" aria-label={t.themeAriaLabel}>
           {THEME_ORDER.map((option) => (
             <button
               key={option}
@@ -358,7 +350,7 @@ function SettingsPanel({
               onClick={() => setTheme(option)}
             >
               <span aria-hidden="true">{THEME_ICONS[option]}</span>
-              {THEME_LABELS[option]}
+              {option === "system" ? t.commonSystem : option === "light" ? t.themeLight : t.themeDark}
             </button>
           ))}
         </div>
@@ -366,41 +358,43 @@ function SettingsPanel({
 
       <section className="settings-section">
         <div className="settings-section__heading">
-          <h2>General</h2>
-          <p>Application information and diagnostics.</p>
+          <h2>{t.settingsGeneralTitle}</h2>
+          <p>{t.settingsGeneralDescription}</p>
         </div>
         <div className="settings-row">
           <div>
-            <strong>Version</strong>
+            <strong>{t.commonVersion}</strong>
             <p>GitOdrile {APP_VERSION}</p>
           </div>
           <button className="secondary-button" type="button" onClick={onOpenAbout}>
-            View about
+            {t.settingsGeneralViewAbout}
           </button>
         </div>
         <div className="settings-row">
           <div>
-            <strong>Git</strong>
-            {gitDiagnostics === null && <p>Checking…</p>}
+            <strong>{t.settingsGeneralGitLabel}</strong>
+            {gitDiagnostics === null && <p>{t.settingsGeneralChecking}</p>}
             {gitDiagnostics?.installed && (
               <p>
                 {gitDiagnostics.version}
-                {gitUpdateStatus?.updateAvailable && <span className="settings-row__badge">Update available</span>}
+                {gitUpdateStatus?.updateAvailable && (
+                  <span className="settings-row__badge">{t.settingsGeneralUpdateAvailable}</span>
+                )}
               </p>
             )}
             {gitDiagnostics && !gitDiagnostics.installed && (
-              <p className="settings-row__warning">Not detected.</p>
+              <p className="settings-row__warning">{t.settingsGeneralNotDetected}</p>
             )}
             {gitActionMessage && <p className="settings-row__hint">{gitActionMessage}</p>}
           </div>
           {gitDiagnostics && !gitDiagnostics.installed && (
             <button className="secondary-button" type="button" onClick={() => void handleInstallGit()}>
-              Install Git
+              {t.settingsGeneralInstallGit}
             </button>
           )}
           {gitDiagnostics?.installed && gitUpdateStatus?.updateAvailable && (
             <button className="secondary-button" type="button" onClick={() => void handleUpdateGit()}>
-              Update
+              {t.settingsGeneralUpdate}
             </button>
           )}
         </div>
@@ -408,26 +402,26 @@ function SettingsPanel({
 
       <section className="settings-section">
         <div className="settings-section__heading">
-          <h2>Git identity</h2>
-          <p>Used to sign the versions you save. This is a normal, global Git setting — not stored only inside GitOdrile.</p>
+          <h2>{t.settingsIdentityTitle}</h2>
+          <p>{t.settingsIdentityDescription}</p>
         </div>
         <div className="identity-fields">
           <label className="text-field">
-            <span>Name</span>
+            <span>{t.identityNameLabel}</span>
             <input
               type="text"
               value={nameInput}
               onChange={(event) => setNameInput(event.target.value)}
-              placeholder="Ada Lovelace"
+              placeholder={t.identityNamePlaceholder}
             />
           </label>
           <label className="text-field">
-            <span>Email</span>
+            <span>{t.identityEmailLabel}</span>
             <input
               type="email"
               value={emailInput}
               onChange={(event) => setEmailInput(event.target.value)}
-              placeholder="ada@example.com"
+              placeholder={t.identityEmailPlaceholder}
             />
           </label>
         </div>
@@ -439,44 +433,57 @@ function SettingsPanel({
             disabled={isSavingIdentity}
             onClick={() => void handleSaveIdentity()}
           >
-            {isSavingIdentity ? "Saving…" : "Save"}
+            {isSavingIdentity ? t.identitySaving : t.identitySave}
           </button>
         </div>
       </section>
 
       <section className="settings-section">
         <div className="settings-section__heading">
-          <h2>Startup</h2>
-          <p>Control what happens when GitOdrile launches.</p>
+          <h2>{t.settingsStartupTitle}</h2>
+          <p>{t.settingsStartupDescription}</p>
         </div>
         <div className="settings-row">
           <div>
-            <strong>Reopen last project on launch</strong>
-            <p>Skip picking a folder again if you had one open last time.</p>
+            <strong>{t.startupReopenLabel}</strong>
+            <p>{t.startupReopenDescription}</p>
           </div>
-          <ToggleSwitch
-            label="Reopen last project on launch"
-            checked={reopenLastProject}
-            onChange={setReopenLastProject}
-          />
+          <ToggleSwitch label={t.startupReopenLabel} checked={reopenLastProject} onChange={setReopenLastProject} />
         </div>
       </section>
 
       <section className="settings-section">
         <div className="settings-section__heading">
-          <h2>Safety</h2>
-          <p>Extra confirmations before you can lose your place.</p>
+          <h2>{t.settingsSafetyTitle}</h2>
+          <p>{t.settingsSafetyDescription}</p>
         </div>
         <div className="settings-row">
           <div>
-            <strong>Confirm before closing a project</strong>
-            <p>Ask before clearing the open project, in case that was a misclick.</p>
+            <strong>{t.safetyConfirmLabel}</strong>
+            <p>{t.safetyConfirmDescription}</p>
           </div>
-          <ToggleSwitch
-            label="Confirm before closing a project"
-            checked={confirmCloseProject}
-            onChange={setConfirmCloseProject}
-          />
+          <ToggleSwitch label={t.safetyConfirmLabel} checked={confirmCloseProject} onChange={setConfirmCloseProject} />
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section__heading">
+          <h2>{t.settingsLanguageTitle}</h2>
+          <p>{t.settingsLanguageDescription}</p>
+        </div>
+        <div className="segmented-control" role="radiogroup" aria-label={t.languageAriaLabel}>
+          {LANGUAGE_ORDER.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              aria-checked={languagePreference === option}
+              className={`segmented-control__option${languagePreference === option ? " segmented-control__option--active" : ""}`}
+              onClick={() => setLanguagePreference(option)}
+            >
+              {option === "system" ? t.commonSystem : LANGUAGE_NAMES[option as Language]}
+            </button>
+          ))}
         </div>
       </section>
     </div>
@@ -507,6 +514,7 @@ function ToggleSwitch({
 }
 
 function App(): React.JSX.Element {
+  const { t } = useLanguage();
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
   const [view, setView] = useState<View>("overview");
@@ -559,7 +567,7 @@ function App(): React.JSX.Element {
   const handleOpenProject = async (): Promise<void> => {
     setOpenError(null);
     try {
-      const selected = await openFolderDialog({ directory: true, multiple: false, title: "Open a Git project" });
+      const selected = await openFolderDialog({ directory: true, multiple: false, title: t.overviewOpenDialogTitle });
       if (!selected || Array.isArray(selected)) {
         return;
       }
@@ -568,7 +576,7 @@ function App(): React.JSX.Element {
       setProject(info);
       localStorage.setItem(LAST_PROJECT_PATH_STORAGE_KEY, info.path);
     } catch (error) {
-      setOpenError(typeof error === "string" ? error : "Couldn't open that folder.");
+      setOpenError(typeof error === "string" ? error : t.overviewCouldntOpenFolder);
     } finally {
       setIsOpening(false);
     }
@@ -648,20 +656,20 @@ function App(): React.JSX.Element {
   }, []);
 
   const commands: Command[] = [
-    { id: "go-overview", label: "Go to Overview", action: () => setView("overview") },
-    { id: "go-settings", label: "Go to Settings", action: () => setView("settings") },
+    { id: "go-overview", label: t.commandGoOverview, action: () => setView("overview") },
+    { id: "go-settings", label: t.commandGoSettings, action: () => setView("settings") },
     ...(project
-      ? [{ id: "close-project", label: "Close project", action: requestCloseProject }]
-      : [{ id: "open-project", label: "Open a project", action: () => void handleOpenProject() }]),
-    { id: "theme-system", label: "Use system theme", action: () => setTheme("system") },
-    { id: "theme-light", label: "Use light theme", action: () => setTheme("light") },
-    { id: "theme-dark", label: "Use dark theme", action: () => setTheme("dark") },
+      ? [{ id: "close-project", label: t.overviewCloseProject, action: requestCloseProject }]
+      : [{ id: "open-project", label: t.overviewOpenProject, action: () => void handleOpenProject() }]),
+    { id: "theme-system", label: t.commandUseSystemTheme, action: () => setTheme("system") },
+    { id: "theme-light", label: t.commandUseLightTheme, action: () => setTheme("light") },
+    { id: "theme-dark", label: t.commandUseDarkTheme, action: () => setTheme("dark") },
     {
       id: "toggle-sidebar",
-      label: isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar",
+      label: isSidebarCollapsed ? t.sidebarExpand : t.sidebarCollapse,
       action: () => setIsSidebarCollapsed((collapsed) => !collapsed),
     },
-    { id: "about", label: "About GitOdrile", action: () => setIsAboutOpen(true) },
+    { id: "about", label: t.aboutGitOdrile, action: () => setIsAboutOpen(true) },
   ];
 
   const appWindow = "__TAURI_INTERNALS__" in window
@@ -689,12 +697,12 @@ function App(): React.JSX.Element {
           <button
             className="command-trigger"
             type="button"
-            aria-label="Open command palette"
-            title="Jump to a view or action"
+            aria-label={t.titlebarOpenCommandPalette}
+            title={t.titlebarJumpToHint}
             onClick={() => setIsPaletteOpen(true)}
           >
             <span aria-hidden="true">{SEARCH_ICON}</span>
-            <span>Jump to…</span>
+            <span>{t.titlebarJumpTo}</span>
             <kbd>Ctrl K</kbd>
           </button>
         </div>
@@ -705,11 +713,11 @@ function App(): React.JSX.Element {
             data-tauri-drag-region
             onDoubleClick={() => performWindowAction(() => appWindow.toggleMaximize())}
           />
-          <div className="window-controls" aria-label="Window controls">
+          <div className="window-controls" aria-label={t.windowControls}>
             <button
               className="window-control"
               type="button"
-              aria-label="Minimize window"
+              aria-label={t.windowMinimize}
               onClick={() => performWindowAction(() => appWindow.minimize())}
             >
               <span aria-hidden="true">−</span>
@@ -717,7 +725,7 @@ function App(): React.JSX.Element {
             <button
               className="window-control"
               type="button"
-              aria-label="Maximize or restore window"
+              aria-label={t.windowMaximize}
               onClick={() => performWindowAction(() => appWindow.toggleMaximize())}
             >
               <span className="window-control__maximize" aria-hidden="true" />
@@ -725,7 +733,7 @@ function App(): React.JSX.Element {
             <button
               className="window-control window-control--close"
               type="button"
-              aria-label="Close window"
+              aria-label={t.windowClose}
               onClick={() => performWindowAction(() => appWindow.close())}
             >
               <span className="window-control__close" aria-hidden="true" />
@@ -742,63 +750,63 @@ function App(): React.JSX.Element {
               {!isSidebarCollapsed && (
                 <div>
                   <strong>GitOdrile</strong>
-                  <span>Git without the bite</span>
+                  <span>{t.brandTagline}</span>
                 </div>
               )}
             </div>
             <button
               className="sidebar-toggle"
               type="button"
-              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={isSidebarCollapsed ? t.sidebarExpand : t.sidebarCollapse}
+              aria-label={isSidebarCollapsed ? t.sidebarExpand : t.sidebarCollapse}
               onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
             >
               <span aria-hidden="true">{isSidebarCollapsed ? NAV_ICONS.expand : NAV_ICONS.collapse}</span>
             </button>
           </div>
 
-          <nav aria-label="Project navigation">
+          <nav aria-label={t.navProjectAriaLabel}>
             <button
               className={`nav-item${view === "overview" ? " nav-item--active" : ""}`}
               type="button"
               aria-current={view === "overview" ? "page" : undefined}
-              title="Overview"
+              title={t.navOverview}
               onClick={() => setView("overview")}
             >
               <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.overview}</span>
-              <span className="nav-item__label">Overview</span>
+              <span className="nav-item__label">{t.navOverview}</span>
             </button>
-            <button className="nav-item" type="button" disabled title="Changes — Coming soon">
+            <button className="nav-item" type="button" disabled title={t.navChangesTitle}>
               <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.changes}</span>
-              <span className="nav-item__label">Changes</span>
+              <span className="nav-item__label">{t.navChanges}</span>
             </button>
-            <button className="nav-item" type="button" disabled title="History — Coming soon">
+            <button className="nav-item" type="button" disabled title={t.navHistoryTitle}>
               <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.history}</span>
-              <span className="nav-item__label">History</span>
+              <span className="nav-item__label">{t.navHistory}</span>
             </button>
-            <button className="nav-item" type="button" disabled title="Recovery — Coming soon">
+            <button className="nav-item" type="button" disabled title={t.navRecoveryTitle}>
               <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.recovery}</span>
-              <span className="nav-item__label">Recovery</span>
+              <span className="nav-item__label">{t.navRecovery}</span>
             </button>
           </nav>
 
-          <nav aria-label="Application" className="nav--secondary">
+          <nav aria-label={t.navApplicationAriaLabel} className="nav--secondary">
             <button
               className={`nav-item${view === "settings" ? " nav-item--active" : ""}`}
               type="button"
               aria-current={view === "settings" ? "page" : undefined}
-              title="Settings"
+              title={t.navSettings}
               onClick={() => setView("settings")}
             >
               <span className="nav-item__icon" aria-hidden="true">{NAV_ICONS.settings}</span>
-              <span className="nav-item__label">Settings</span>
+              <span className="nav-item__label">{t.navSettings}</span>
             </button>
           </nav>
         </aside>
 
         <section className="workspace">
           <header className="topbar">
-            <h1>{view === "overview" ? "Overview" : "Settings"}</h1>
+            <h1>{view === "overview" ? t.navOverview : t.navSettings}</h1>
           </header>
 
           {view === "overview" ? (
@@ -839,18 +847,15 @@ function App(): React.JSX.Element {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="about-dialog__mark" aria-hidden="true">{CROCODILE_MARK}</div>
-            <p className="eyebrow">About GitOdrile</p>
-            <h2 id="about-title">Git without the bite.</h2>
-            <p>
-              GitOdrile is a friendly desktop Git client that turns version control
-              into clear, safe steps.
-            </p>
+            <p className="eyebrow">{t.aboutGitOdrile}</p>
+            <h2 id="about-title">{t.aboutHeading}</h2>
+            <p>{t.aboutDescription}</p>
             <dl className="about-details">
-              <div><dt>Version</dt><dd>{APP_VERSION}</dd></div>
-              <div><dt>Built with</dt><dd>Tauri, React, and Rust</dd></div>
+              <div><dt>{t.commonVersion}</dt><dd>{APP_VERSION}</dd></div>
+              <div><dt>{t.aboutBuiltWithLabel}</dt><dd>{t.aboutBuiltWithValue}</dd></div>
             </dl>
             <button className="primary-button" type="button" onClick={() => setIsAboutOpen(false)}>
-              Close
+              {t.commonClose}
             </button>
           </div>
         </div>
@@ -867,17 +872,14 @@ function App(): React.JSX.Element {
             tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 id="close-confirm-title">Close this project?</h2>
-            <p>
-              {project ? `"${project.name}" ` : "The project "}
-              stays exactly as it is on disk. You can reopen it anytime.
-            </p>
+            <h2 id="close-confirm-title">{t.closeConfirmTitle}</h2>
+            <p>{project ? t.closeConfirmBodyNamed(project.name) : t.closeConfirmBodyGeneric}</p>
             <div className="dialog-actions">
               <button className="secondary-button" type="button" onClick={() => setIsCloseConfirmOpen(false)}>
-                Cancel
+                {t.commonCancel}
               </button>
               <button className="primary-button" type="button" onClick={closeProject}>
-                Close project
+                {t.overviewCloseProject}
               </button>
             </div>
           </div>
@@ -889,6 +891,8 @@ function App(): React.JSX.Element {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <LanguageProvider>
+      <App />
+    </LanguageProvider>
   </React.StrictMode>,
 );
